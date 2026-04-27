@@ -279,7 +279,11 @@ export function createWeatherApp() {
                 const cityName = suggestion?.name ?? suggestion;
                 elements.cityInput.value = cityName;
                 hideSuggestions();
-                await fetchAndRenderWeather({ city: cityName, days: 5 }, { source: "manual", announce: true });
+                if (suggestion?.lat && suggestion?.lon) {
+                    await fetchAndRenderWeather({ lat: suggestion.lat, lon: suggestion.lon, days: 5 }, { source: "manual", announce: true });
+                } else {
+                    await fetchAndRenderWeather({ city: cityName, days: 5 }, { source: "manual", announce: true });
+                }
             }
         });
 
@@ -288,9 +292,15 @@ export function createWeatherApp() {
             if (!button) return;
             event.preventDefault();
             const city = button.dataset.city || "";
+            const lat  = button.dataset.lat  || "";
+            const lon  = button.dataset.lon  || "";
             elements.cityInput.value = city;
             hideSuggestions();
-            await fetchAndRenderWeather({ city, days: 5 }, { source: "manual", announce: true });
+            if (lat && lon) {
+                await fetchAndRenderWeather({ lat: parseFloat(lat), lon: parseFloat(lon), days: 5 }, { source: "manual", announce: true });
+            } else {
+                await fetchAndRenderWeather({ city, days: 5 }, { source: "manual", announce: true });
+            }
         });
 
         document.addEventListener("click", (event) => {
@@ -660,11 +670,15 @@ export function createWeatherApp() {
             const region      = item?.region      ?? "";
             const country     = item?.country     ?? "";
             const flag        = item?.flag        ?? "";
+            const lat         = item?.lat         ?? "";
+            const lon         = item?.lon         ?? "";
             const isActive    = index === state.suggestionIndex;
             const meta = [region, country].filter(Boolean).join(", ");
             return `
                 <li role="option" aria-selected="${isActive}">
                     <button type="button" data-city="${escapeHtml(cityName)}"
+                            data-lat="${escapeHtml(String(lat))}"
+                            data-lon="${escapeHtml(String(lon))}"
                             class="${isActive ? "is-active" : ""}"
                             data-sound-hover="true">
                         <span class="sugg-primary">${flag ? flag + " " : ""}${escapeHtml(cityOnly)}</span>
