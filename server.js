@@ -203,29 +203,34 @@ app.get("/api/cities", async (req, res) => {
     if (cached) return res.json(cached);
 
     try {
-        // Detect if the query looks India-specific (Indian city name or explicit "india")
         const qLower = query.toLowerCase();
-        const isIndiaQuery = qLower.includes("india") || Boolean(INDIA_CITY_COORDS[qLower]);
 
-        // Build local coordinate-based matches for known Indian cities
-        const coordMatches = Object.entries(INDIA_CITY_COORDS)
-            .filter(([name]) => name.startsWith(qLower))
-            .slice(0, 3)
-            .map(([name, coords]) => {
-                const [clat, clon] = coords.split(",").map(Number);
-                return {
-                    _coordMatch: true,
-                    name: name.split(" ").map(w => w[0].toUpperCase() + w.slice(1)).join(" "),
-                    region: "India",
-                    country: "IN",
-                    lat: clat,
-                    lon: clon,
-                    url: "",
-                    id: `coord-${name.replace(/\s+/g, "-")}`
-                };
-            });
+        // Detect if the query *explicitly* targets India (contains "india" keyword
+        // OR is an exact match of a known Indian city name — NOT a prefix match,
+        // to avoid biasing queries like "bar" toward Bardhaman over Barcelona).
+        const isIndiaQuery = qLower.includes("india") || (INDIA_CITY_COORDS[qLower] !== undefined);
 
-        // Only run the India-biased parallel search when the query actually targets India
+        // Build local coordinate-based matches for known Indian cities (prefix match)
+        const coordMatches = isIndiaQuery
+            ? Object.entries(INDIA_CITY_COORDS)
+                .filter(([name]) => name.startsWith(qLower))
+                .slice(0, 3)
+                .map(([name, coords]) => {
+                    const [clat, clon] = coords.split(",").map(Number);
+                    return {
+                        _coordMatch: true,
+                        name: name.split(" ").map(w => w[0].toUpperCase() + w.slice(1)).join(" "),
+                        region: "India",
+                        country: "IN",
+                        lat: clat,
+                        lon: clon,
+                        url: "",
+                        id: `coord-${name.replace(/\s+/g, "-")}`
+                    };
+                })
+            : [];
+
+        // For India queries run a secondary India-biased search; for global queries just one
         const searches = isIndiaQuery
             ? [fetchCitySearch(query), fetchCitySearch(`${query}, India`)]
             : [fetchCitySearch(query)];
@@ -237,7 +242,8 @@ app.get("/api/cities", async (req, res) => {
         const others = [];
 
         const addResult = (item) => {
-            const key = `${item.name}|${item.region}|${item.country}`.toLowerCase();
+            // Use lat+lon as the dedup key so same city different spellings still dedup
+            const key = `${Math.round(item.lat * 10)},${Math.round(item.lon * 10)}`;
             if (seen.has(key)) return;
             seen.add(key);
             if (item.country === "IN") indian.push(item);
@@ -246,22 +252,19 @@ app.get("/api/cities", async (req, res) => {
 
         results.forEach(r => { if (r.status === "fulfilled") r.value.forEach(addResult); });
 
-        // For India queries: Indian cities first, then others; for global queries: global first
-        const merged = isIndiaQuery
-            ? [...coordMatches, ...indian, ...others]
-            : [...others, ...indian];
-
-        // Sort alphabetically by city name within each group, then cap to 5
+        // Sort alphabetically by city name
         const sortAlpha = (a, b) => a.name.localeCompare(b.name);
+
+        // For India queries: Indian cities first (coord matches at top), then others
+        // For global queries: all results sorted alphabetically (OWM already ranks by relevance,
+        // but we re-sort so "ba" → Barcelona, Baghdad, Baku... not random order)
         const allResults = isIndiaQuery
             ? [
-                ...[...coordMatches, ...indian].sort(sortAlpha),
-                ...others.sort(sortAlpha)
-              ].filter((v, i, arr) => arr.findIndex(x => x.name === v.name && x.country === v.country) === i)
-            : [
-                ...others.sort(sortAlpha),
-                ...indian.sort(sortAlpha)
-              ];
+                ...coordMatches,
+                ...[...indian].sort(sortAlpha),
+                ...[...others].sort(sortAlpha)
+              ]
+            : [...others, ...indian].sort(sortAlpha);
 
         const normalized = normalizeCitySearchResults(allResults).slice(0, 5);
         cityCache.set(cacheKey, { timestamp: Date.now(), payload: normalized });
@@ -651,14 +654,16 @@ function normalizeCitySearchResults(results) {
     const seen = new Set();
     return results
         .filter(e => {
-            const key = `${e.name}|${e.region}|${e.country}`.toLowerCase();
+            // Dedup by rounded lat/lon
+            const key = `${Math.round((e.lat||0) * 10)},${Math.round((e.lon||0) * 10)}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
         })
         .map((e) => {
-            // country is already an ISO code from OWM ("IN", "US", etc.)
-            const countryCode = e._coordMatch ? "IN" : (e.country || "");
+            // e.country from OWM is already an ISO-3166-1 alpha-2 code ("ES", "CH", "US", etc.)
+            // _coordMatch entries also use ISO codes ("IN")
+            const countryCode = (e.country || "").toUpperCase().trim();
             const countryName = countryCode
                 ? (new Intl.DisplayNames(["en"], { type: "region" }).of(countryCode) || countryCode)
                 : "";
@@ -666,7 +671,7 @@ function normalizeCitySearchResults(results) {
                 ? `${e.name}, India`
                 : [e.name, e.region, countryName].filter((v, i, a) => v && a.indexOf(v) === i).join(", ");
             return {
-                id:          e.id || `${e.name}-${e.region}-${e.country}`.toLowerCase().replace(/\s+/g, "-"),
+                id:          e.id || `${e.name}-${e.region}-${countryCode}`.toLowerCase().replace(/\s+/g, "-"),
                 name:        e.name    || "",
                 region:      e.region  || "",
                 country:     countryName,
