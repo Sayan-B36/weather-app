@@ -123,9 +123,7 @@ npm run dev
 | Humidity, wind, pressure | ✅ Full support |
 | 5-day forecast | ✅ Full support |
 | 24-hour hourly | ✅ Full support (3-hour intervals) |
-| Sunrise / Sunset | ✅ Full support |
-| UV Index | ⚠️ Not available on free tier (shows 0) |
-| Moon phase | ⚠️ Not available on free tier |
+| Sunrise / Sunset | ✅ Full support ||
 | Indian city accuracy | ✅ Improved via coordinate overrides |
 
 ---
