@@ -203,36 +203,14 @@ app.get("/api/cities", async (req, res) => {
     if (cached) return res.json(cached);
 
     try {
-        // Run global search + India-biased search in parallel
-        const [globalResults, indiaResults] = await Promise.allSettled([
-            fetchCitySearch(query),
-            fetchCitySearch(`${query}, India`)
-        ]);
-
-        const seen   = new Set();
-        const indian = [];
-        const others = [];
-
-        const addResult = (item) => {
-            const key = `${item.name}|${item.region}|${item.country}`.toLowerCase();
-            if (seen.has(key)) return;
-            seen.add(key);
-            if (item.country === "IN") {
-                indian.push(item);
-            } else {
-                others.push(item);
-            }
-        };
-
-        // India results first
-        if (indiaResults.status === "fulfilled") indiaResults.value.forEach(r => addResult(r));
-        if (globalResults.status === "fulfilled") globalResults.value.forEach(r => addResult(r));
-
-        // Also add local coordinate-based matches for known Indian cities
+        // Detect if the query looks India-specific (Indian city name or explicit "india")
         const qLower = query.toLowerCase();
+        const isIndiaQuery = qLower.includes("india") || Boolean(INDIA_CITY_COORDS[qLower]);
+
+        // Build local coordinate-based matches for known Indian cities
         const coordMatches = Object.entries(INDIA_CITY_COORDS)
-            .filter(([name]) => name.startsWith(qLower) || name.includes(qLower))
-            .slice(0, 6)
+            .filter(([name]) => name.startsWith(qLower))
+            .slice(0, 3)
             .map(([name, coords]) => {
                 const [clat, clon] = coords.split(",").map(Number);
                 return {
@@ -247,8 +225,45 @@ app.get("/api/cities", async (req, res) => {
                 };
             });
 
-        const allResults = [...coordMatches, ...indian, ...others];
-        const normalized = normalizeCitySearchResults(allResults);
+        // Only run the India-biased parallel search when the query actually targets India
+        const searches = isIndiaQuery
+            ? [fetchCitySearch(query), fetchCitySearch(`${query}, India`)]
+            : [fetchCitySearch(query)];
+
+        const results = await Promise.allSettled(searches);
+
+        const seen   = new Set();
+        const indian = [];
+        const others = [];
+
+        const addResult = (item) => {
+            const key = `${item.name}|${item.region}|${item.country}`.toLowerCase();
+            if (seen.has(key)) return;
+            seen.add(key);
+            if (item.country === "IN") indian.push(item);
+            else others.push(item);
+        };
+
+        results.forEach(r => { if (r.status === "fulfilled") r.value.forEach(addResult); });
+
+        // For India queries: Indian cities first, then others; for global queries: global first
+        const merged = isIndiaQuery
+            ? [...coordMatches, ...indian, ...others]
+            : [...others, ...indian];
+
+        // Sort alphabetically by city name within each group, then cap to 5
+        const sortAlpha = (a, b) => a.name.localeCompare(b.name);
+        const allResults = isIndiaQuery
+            ? [
+                ...[...coordMatches, ...indian].sort(sortAlpha),
+                ...others.sort(sortAlpha)
+              ].filter((v, i, arr) => arr.findIndex(x => x.name === v.name && x.country === v.country) === i)
+            : [
+                ...others.sort(sortAlpha),
+                ...indian.sort(sortAlpha)
+              ];
+
+        const normalized = normalizeCitySearchResults(allResults).slice(0, 5);
         cityCache.set(cacheKey, { timestamp: Date.now(), payload: normalized });
         return res.json(normalized);
     } catch (err) {
@@ -449,8 +464,8 @@ async function fetchForecast(query, days) {
 }
 
 async function fetchCitySearch(query) {
-    // OWM Geocoding API — returns up to 5 matches
-    const url  = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=5&appid=${API_KEY}`;
+    // OWM Geocoding API — returns up to 10 matches so we have room to sort & deduplicate
+    const url  = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=10&appid=${API_KEY}`;
     const data = await fetchJson(url);
     if (!Array.isArray(data)) {
         const err = new Error("City search failed.");
@@ -641,7 +656,6 @@ function normalizeCitySearchResults(results) {
             seen.add(key);
             return true;
         })
-        .slice(0, 24)
         .map((e) => {
             // country is already an ISO code from OWM ("IN", "US", etc.)
             const countryCode = e._coordMatch ? "IN" : (e.country || "");
