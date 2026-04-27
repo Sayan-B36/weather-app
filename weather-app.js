@@ -99,6 +99,9 @@ export function createWeatherApp() {
         cache: new Map(),
         suggestions: [],
         suggestionIndex: -1,
+        suggestionQuery: "",
+        suggestionRequestId: 0,
+        selectedSuggestion: null,
         audioEnabled: true,
         audioUnlocked: false,
         audioPending: null
@@ -108,18 +111,13 @@ export function createWeatherApp() {
     const scene  = new SceneController(elements.sceneCanvas);
     const motion = new MotionController(document);
 
-    const debouncedCitySearch = debounce(async (query) => {
+    const debouncedCitySearch = debounce((query) => {
         const q = query.trim();
-        if (q.length < 2) { hideSuggestions(); return; }
-        try {
-            const response = await fetch(`/api/cities?q=${encodeURIComponent(q)}`);
-            if (!response.ok) return;
-            const cities = await response.json();
-            if (!Array.isArray(cities) || cities.length === 0) { hideSuggestions(); return; }
-            state.suggestions = cities;
-            state.suggestionIndex = -1;
-            paintSuggestions();
-        } catch { /* silent */ }
+        if (q.length < 2) {
+            hideSuggestions();
+            return;
+        }
+        void requestSuggestions(q);
     }, 180);
 
     audio.setReducedEffects(state.reduceMotion);
@@ -139,6 +137,26 @@ export function createWeatherApp() {
     // ── INIT ──────────────────────────────────────────────────────────────────
 
     async function loadDefaultCity() {
+        const savedSelection = getLastSelection();
+        if (savedSelection) {
+            state.selectedSuggestion = savedSelection;
+            elements.cityInput.value = savedSelection.label || savedSelection.query || savedSelection.city || "";
+            if (hasSelectionCoordinates(savedSelection)) {
+                await fetchAndRenderWeather(
+                    { lat: savedSelection.lat, lon: savedSelection.lon, days: 5 },
+                    { source: "manual", announce: false, selection: savedSelection }
+                );
+                return;
+            }
+            if (savedSelection.query) {
+                await fetchAndRenderWeather(
+                    { city: savedSelection.query, days: 5 },
+                    { source: "manual", announce: false, selection: savedSelection }
+                );
+                return;
+            }
+        }
+
         const savedCity = safeLocalStorageGet("atmosfera:last-city") || "Kolkata";
         elements.cityInput.value = savedCity;
         await fetchAndRenderWeather({ city: savedCity, days: 5 }, { source: "manual", announce: false });
@@ -154,8 +172,7 @@ export function createWeatherApp() {
                 showStatus("Enter a city to stage the live forecast.", "info");
                 return;
             }
-            hideSuggestions();
-            await fetchAndRenderWeather({ city, days: 5 }, { source: "manual", announce: true });
+            await performSearch(city);
         });
 
         elements.geoButton.addEventListener("click", async () => {
@@ -234,8 +251,9 @@ export function createWeatherApp() {
                     const cityName = autoData.location.name;
                     elements.cityInput.value = autoData.location.displayName || cityName;
                     state.activeWeather = autoData;
-                    storeRecentCity(cityName);
-                    safeLocalStorageSet("atmosfera:last-city", cityName);
+                    state.selectedSuggestion = normalizeSelectionEntry(buildSelectionFromWeather(autoData));
+                    storeRecentSelection(state.selectedSuggestion);
+                    storeLastSelection(state.selectedSuggestion);
                     renderWeather(autoData, "location");
                     setAppState("success");
                     showStatus(`Live weather updated for ${autoData.location.displayName || cityName}.`, "success");
@@ -251,7 +269,18 @@ export function createWeatherApp() {
         });
 
         elements.cityInput.addEventListener("input", () => {
-            debouncedCitySearch(elements.cityInput.value);
+            const value = elements.cityInput.value.trim();
+            if (state.selectedSuggestion && !selectionMatchesInput(state.selectedSuggestion, value)) {
+                state.selectedSuggestion = null;
+            }
+            debouncedCitySearch(value);
+        });
+
+        elements.cityInput.addEventListener("focus", () => {
+            const value = elements.cityInput.value.trim();
+            if (value.length >= 2) {
+                void requestSuggestions(value);
+            }
         });
 
         elements.cityInput.addEventListener("keydown", async (event) => {
@@ -273,34 +302,20 @@ export function createWeatherApp() {
                 hideSuggestions();
                 return;
             }
-            if (event.key === "Enter" && state.suggestionIndex >= 0) {
+            if (event.key === "Enter") {
                 event.preventDefault();
-                const suggestion = state.suggestions[state.suggestionIndex];
-                const cityName = suggestion?.name ?? suggestion;
-                elements.cityInput.value = cityName;
-                hideSuggestions();
-                if (suggestion?.lat && suggestion?.lon) {
-                    await fetchAndRenderWeather({ lat: suggestion.lat, lon: suggestion.lon, days: 5 }, { source: "manual", announce: true });
-                } else {
-                    await fetchAndRenderWeather({ city: cityName, days: 5 }, { source: "manual", announce: true });
-                }
+                const suggestion = state.suggestions[state.suggestionIndex >= 0 ? state.suggestionIndex : 0];
+                await selectSuggestion(suggestion);
             }
         });
 
         elements.suggestionList.addEventListener("mousedown", async (event) => {
-            const button = event.target.closest("button[data-city]");
+            const button = event.target.closest("button[data-index]");
             if (!button) return;
             event.preventDefault();
-            const city = button.dataset.city || "";
-            const lat  = button.dataset.lat  || "";
-            const lon  = button.dataset.lon  || "";
-            elements.cityInput.value = city;
-            hideSuggestions();
-            if (lat && lon) {
-                await fetchAndRenderWeather({ lat: parseFloat(lat), lon: parseFloat(lon), days: 5 }, { source: "manual", announce: true });
-            } else {
-                await fetchAndRenderWeather({ city, days: 5 }, { source: "manual", announce: true });
-            }
+            const index = Number(button.dataset.index);
+            const suggestion = state.suggestions[index];
+            await selectSuggestion(suggestion);
         });
 
         document.addEventListener("click", (event) => {
@@ -316,11 +331,10 @@ export function createWeatherApp() {
         });
 
         elements.recentStrip.addEventListener("click", async (event) => {
-            const button = event.target.closest("button[data-city]");
+            const button = event.target.closest("button[data-query]");
             if (!button) return;
-            const city = button.dataset.city || "";
-            elements.cityInput.value = city;
-            await fetchAndRenderWeather({ city, days: 5 }, { source: "manual", announce: true });
+            const selection = buildSelectionFromDataset(button.dataset);
+            await selectStoredSelection(selection);
         });
 
         elements.watchlistGrid.addEventListener("click", async (event) => {
@@ -374,8 +388,110 @@ export function createWeatherApp() {
 
     // ── FETCH + RENDER ────────────────────────────────────────────────────────
 
+    async function requestSuggestions(query, options = {}) {
+        const { paint = true } = options;
+        const q = query.trim();
+        if (q.length < 2) {
+            if (paint) hideSuggestions();
+            return [];
+        }
+
+        const requestId = ++state.suggestionRequestId;
+        try {
+            const response = await fetch(`/api/cities?q=${encodeURIComponent(q)}`);
+            if (requestId !== state.suggestionRequestId) return [];
+            if (!response.ok) {
+                if (paint) hideSuggestions();
+                return [];
+            }
+
+            const cities = await response.json();
+            if (requestId !== state.suggestionRequestId) return [];
+            if (!Array.isArray(cities) || cities.length === 0) {
+                if (paint) hideSuggestions();
+                else {
+                    state.suggestions = [];
+                    state.suggestionIndex = -1;
+                    state.suggestionQuery = q;
+                }
+                return [];
+            }
+
+            state.suggestions = cities;
+            state.suggestionIndex = -1;
+            state.suggestionQuery = q;
+            if (paint) paintSuggestions();
+            return cities;
+        } catch {
+            if (requestId === state.suggestionRequestId && paint) hideSuggestions();
+            return [];
+        }
+    }
+
+    async function resolvePrimarySuggestion(query) {
+        const q = query.trim();
+        if (q.length < 2) return null;
+        const normalizedQuery = normalizeSearchValue(q);
+        const hasFreshSuggestions =
+            state.suggestions.length > 0 &&
+            normalizeSearchValue(state.suggestionQuery) === normalizedQuery;
+
+        if (!hasFreshSuggestions) {
+            const fresh = await requestSuggestions(q, { paint: false });
+            return fresh[0] || null;
+        }
+
+        return state.suggestions[state.suggestionIndex >= 0 ? state.suggestionIndex : 0] || null;
+    }
+
+    async function performSearch(query) {
+        if (state.selectedSuggestion && selectionMatchesInput(state.selectedSuggestion, query)) {
+            await selectStoredSelection(state.selectedSuggestion);
+            return;
+        }
+
+        const primarySuggestion = await resolvePrimarySuggestion(query);
+        if (primarySuggestion) {
+            await selectSuggestion(primarySuggestion);
+            return;
+        }
+
+        state.selectedSuggestion = null;
+        hideSuggestions();
+        await fetchAndRenderWeather({ city: query, days: 5 }, { source: "manual", announce: true });
+    }
+
+    async function selectSuggestion(suggestion) {
+        if (!suggestion) return;
+        const selection = buildSelectionFromSuggestion(suggestion);
+        await selectStoredSelection(selection);
+    }
+
+    async function selectStoredSelection(selection) {
+        if (!selection) return;
+        const normalizedSelection = normalizeSelectionEntry(selection);
+        state.selectedSuggestion = normalizedSelection;
+        elements.cityInput.value = normalizedSelection.label || normalizedSelection.query || normalizedSelection.city || "";
+        hideSuggestions();
+
+        if (hasSelectionCoordinates(normalizedSelection)) {
+            await fetchAndRenderWeather(
+                { lat: normalizedSelection.lat, lon: normalizedSelection.lon, days: 5 },
+                { source: "manual", announce: true, selection: normalizedSelection }
+            );
+            return;
+        }
+
+        const fallbackQuery = normalizedSelection.query || normalizedSelection.city || elements.cityInput.value.trim();
+        await fetchAndRenderWeather(
+            { city: fallbackQuery, days: 5 },
+            { source: "manual", announce: true, selection: normalizedSelection }
+        );
+    }
+
     async function fetchAndRenderWeather(params, options = {}) {
-        const { source = "manual", announce = true } = options;
+        const { source = "manual", announce = true, selection = null } = options;
+        const previousWeather = state.activeWeather;
         setAppState("loading");
         showStatus("Loading weather intelligence...", "info");
         renderLoadingState(elements);
@@ -383,11 +499,14 @@ export function createWeatherApp() {
         try {
             const weather = await fetchWeather(params);
             state.activeWeather = weather;
-
-            const storedCity = weather.location.name || params.city;
-            if (storedCity) {
-                storeRecentCity(storedCity);
-                safeLocalStorageSet("atmosfera:last-city", storedCity);
+            const storedSelection = normalizeSelectionEntry(selection || buildSelectionFromWeather(weather));
+            state.selectedSuggestion = storedSelection;
+            if (storedSelection) {
+                storeRecentSelection(storedSelection);
+                storeLastSelection(storedSelection);
+                if (storedSelection.label) {
+                    elements.cityInput.value = storedSelection.label;
+                }
             }
 
             renderWeather(weather, source);
@@ -397,6 +516,24 @@ export function createWeatherApp() {
             showStatus(bannerMessage, "success");
             if (announce) announceLive(bannerMessage);
         } catch (error) {
+            if (error?.code === "AMBIGUOUS_LOCATION" && Array.isArray(error.suggestions) && error.suggestions.length > 0) {
+                state.activeWeather = previousWeather;
+                if (previousWeather) {
+                    renderWeather(previousWeather, source);
+                    setAppState("success");
+                } else {
+                    setAppState("idle");
+                }
+                state.suggestions = error.suggestions;
+                state.suggestionIndex = -1;
+                state.suggestionQuery = elements.cityInput.value.trim();
+                paintSuggestions();
+                const message = error?.message || "Select a city from the suggestions.";
+                showStatus(message, "info");
+                if (announce) announceLive(message);
+                return;
+            }
+
             const message = error?.message || "Weather data is unavailable right now.";
             setAppState("error");
             renderFallbackState(elements, message);
@@ -574,11 +711,32 @@ export function createWeatherApp() {
     }
 
     function renderRecentStrip() {
-        const combined = [...getRecentCities(), ...FEATURED_CITIES]
-            .filter((v, i, a) => v && a.indexOf(v) === i)
+        const combined = [
+            ...getRecentSelections(),
+            ...FEATURED_CITIES.map((city) => normalizeSelectionEntry({ label: city, query: city, city }))
+        ]
+            .filter((entry, index, array) => {
+                const key = `${normalizeSearchValue(entry.label || entry.query || entry.city || "")}|${entry.lat ?? ""}|${entry.lon ?? ""}`;
+                return key && array.findIndex((candidate) => {
+                    const candidateKey = `${normalizeSearchValue(candidate.label || candidate.query || candidate.city || "")}|${candidate.lat ?? ""}|${candidate.lon ?? ""}`;
+                    return candidateKey === key;
+                }) === index;
+            })
             .slice(0, 8);
-        elements.recentStrip.innerHTML = combined.map((city) => `
-            <button class="quick-pill" type="button" data-city="${escapeHtml(city)}" data-sound-hover="true">${escapeHtml(city)}</button>
+
+        elements.recentStrip.innerHTML = combined.map((entry) => `
+            <button
+                class="quick-pill"
+                type="button"
+                data-query="${escapeHtml(entry.query || entry.city || entry.label || "")}"
+                data-label="${escapeHtml(entry.label || entry.query || entry.city || "")}"
+                data-city="${escapeHtml(entry.city || entry.query || entry.label || "")}"
+                data-lat="${entry.lat ?? ""}"
+                data-lon="${entry.lon ?? ""}"
+                data-country="${escapeHtml(entry.country || "")}"
+                data-country-code="${escapeHtml(entry.countryCode || "")}"
+                data-sound-hover="true"
+            >${escapeHtml(entry.label || entry.query || entry.city || "")}</button>
         `).join("");
     }
 
@@ -649,7 +807,10 @@ export function createWeatherApp() {
         }
 
         if (!response.ok || payload?.error) {
-            throw new Error(payload?.error || "Weather data could not be loaded.");
+            const error = new Error(payload?.error || "Weather data could not be loaded.");
+            error.code = payload?.code || "";
+            error.suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+            throw error;
         }
 
         state.cache.set(cacheKey, payload);
@@ -664,21 +825,18 @@ export function createWeatherApp() {
             return;
         }
         elements.suggestionList.hidden = false;
+        elements.searchSection.classList.add("is-suggestions-open");
         elements.suggestionList.innerHTML = state.suggestions.map((item, index) => {
             const cityName    = item?.name        ?? item;
             const cityOnly    = item?.name        ?? item;
             const region      = item?.region      ?? "";
             const country     = item?.country     ?? "";
             const flag        = item?.flag        ?? "";
-            const lat         = item?.lat         ?? "";
-            const lon         = item?.lon         ?? "";
             const isActive    = index === state.suggestionIndex;
             const meta = [region, country].filter(Boolean).join(", ");
             return `
                 <li role="option" aria-selected="${isActive}">
-                    <button type="button" data-city="${escapeHtml(cityName)}"
-                            data-lat="${escapeHtml(String(lat))}"
-                            data-lon="${escapeHtml(String(lon))}"
+                    <button type="button" data-index="${index}"
                             class="${isActive ? "is-active" : ""}"
                             data-sound-hover="true">
                         <span class="sugg-primary">${flag ? flag + " " : ""}${escapeHtml(cityOnly)}</span>
@@ -692,8 +850,10 @@ export function createWeatherApp() {
     function hideSuggestions() {
         state.suggestions    = [];
         state.suggestionIndex = -1;
+        state.suggestionQuery = "";
         elements.suggestionList.hidden = true;
         elements.suggestionList.innerHTML = "";
+        elements.searchSection.classList.remove("is-suggestions-open");
     }
 
     // ── THEME ─────────────────────────────────────────────────────────────────
@@ -764,7 +924,7 @@ export function createWeatherApp() {
 function getElements() {
     const ids = [
         "body", "pageRoot", "liveRegion", "motionBadge", "soundHint",
-        "audioButton", "searchForm", "cityInput", "geoButton", "suggestionList",
+        "audioButton", "searchSection", "searchForm", "cityInput", "geoButton", "suggestionList",
         "statusBanner", "heroEyebrow", "heroContextChip", "heroTitle",
         "heroDescription", "heroTemperature", "heroCondition", "heroHighLow",
         "heroFeelsLike", "localTime", "localDate", "sunCycle", "sunTimes",
@@ -848,20 +1008,139 @@ function deriveThemeKey(weather) {
 
 // ── CITY STORAGE ──────────────────────────────────────────────────────────────
 
-function storeRecentCity(city) {
-    const next = [city, ...getRecentCities()]
-        .filter((v, i, a) => v && a.indexOf(v) === i)
+function buildSelectionFromSuggestion(suggestion) {
+    if (!suggestion) return null;
+    return normalizeSelectionEntry({
+        label: suggestion.displayName || [suggestion.name, suggestion.country].filter(Boolean).join(", "),
+        query: suggestion.displayName || [suggestion.name, suggestion.country].filter(Boolean).join(", "),
+        city: suggestion.name || "",
+        region: suggestion.region || "",
+        country: suggestion.country || "",
+        countryCode: suggestion.countryCode || "",
+        lat: suggestion.lat,
+        lon: suggestion.lon
+    });
+}
+
+function buildSelectionFromWeather(weather) {
+    const location = weather?.location || {};
+    return normalizeSelectionEntry({
+        label: location.displayName || [location.name, location.country].filter(Boolean).join(", "),
+        query: [location.name, location.country].filter(Boolean).join(", "),
+        city: location.name || "",
+        country: location.country || "",
+        countryCode: location.region || "",
+        lat: location.lat,
+        lon: location.lon
+    });
+}
+
+function buildSelectionFromDataset(dataset) {
+    return normalizeSelectionEntry({
+        label: dataset.label,
+        query: dataset.query,
+        city: dataset.city,
+        country: dataset.country,
+        countryCode: dataset.countryCode,
+        lat: dataset.lat,
+        lon: dataset.lon
+    });
+}
+
+function normalizeSelectionEntry(selection) {
+    if (!selection) return null;
+    const label = (selection.label || selection.query || selection.city || "").trim();
+    const query = (selection.query || label || selection.city || "").trim();
+    const city = (selection.city || label || query || "").trim();
+    const lat = selection.lat === "" || selection.lat === null || selection.lat === undefined ? null : Number(selection.lat);
+    const lon = selection.lon === "" || selection.lon === null || selection.lon === undefined ? null : Number(selection.lon);
+
+    return {
+        label,
+        query,
+        city,
+        region: selection.region || "",
+        country: selection.country || "",
+        countryCode: selection.countryCode || "",
+        lat: Number.isFinite(lat) ? lat : null,
+        lon: Number.isFinite(lon) ? lon : null
+    };
+}
+
+function hasSelectionCoordinates(selection) {
+    return Boolean(selection) && Number.isFinite(selection.lat) && Number.isFinite(selection.lon);
+}
+
+function selectionMatchesInput(selection, value) {
+    const normalizedValue = normalizeSearchValue(value);
+    return [
+        selection?.label,
+        selection?.query,
+        selection?.city
+    ].filter(Boolean).some((candidate) => normalizeSearchValue(candidate) === normalizedValue);
+}
+
+function normalizeSearchValue(value) {
+    return String(value || "")
+        .normalize("NFKD")
+        .replace(/[^\w\s,]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toLowerCase();
+}
+
+function storeRecentSelection(selection) {
+    const normalized = normalizeSelectionEntry(selection);
+    if (!normalized || !normalized.label) return;
+
+    const next = [normalized, ...getRecentSelections()]
+        .filter((entry, index, array) => {
+            const key = `${normalizeSearchValue(entry.label || entry.query || entry.city || "")}|${entry.lat ?? ""}|${entry.lon ?? ""}`;
+            return key && array.findIndex((candidate) => {
+                const candidateKey = `${normalizeSearchValue(candidate.label || candidate.query || candidate.city || "")}|${candidate.lat ?? ""}|${candidate.lon ?? ""}`;
+                return candidateKey === key;
+            }) === index;
+        })
         .slice(0, 6);
+
     safeLocalStorageSet("atmosfera:recent-cities", JSON.stringify(next));
 }
 
-function getRecentCities() {
+function getRecentSelections() {
     try {
-        const stored = safeLocalStorageGet("atmosfera:recent-cities");
-        return JSON.parse(stored || "[]");
+        const stored = JSON.parse(safeLocalStorageGet("atmosfera:recent-cities") || "[]");
+        return Array.isArray(stored)
+            ? stored
+                .map((entry) => typeof entry === "string"
+                    ? normalizeSelectionEntry({ label: entry, query: entry, city: entry })
+                    : normalizeSelectionEntry(entry))
+                .filter((entry) => entry && entry.label)
+            : [];
     } catch {
         return [];
     }
+}
+
+function storeLastSelection(selection) {
+    const normalized = normalizeSelectionEntry(selection);
+    if (!normalized || !normalized.label) return;
+    safeLocalStorageSet("atmosfera:last-selection", JSON.stringify(normalized));
+    safeLocalStorageSet("atmosfera:last-city", normalized.query || normalized.label || normalized.city);
+}
+
+function getLastSelection() {
+    try {
+        const stored = safeLocalStorageGet("atmosfera:last-selection");
+        if (stored) {
+            const parsed = normalizeSelectionEntry(JSON.parse(stored));
+            if (parsed?.label) return parsed;
+        }
+    } catch {
+        // ignore invalid persisted selection
+    }
+
+    const legacyCity = safeLocalStorageGet("atmosfera:last-city");
+    return legacyCity ? normalizeSelectionEntry({ label: legacyCity, query: legacyCity, city: legacyCity }) : null;
 }
 
 // ── FORMATTERS ────────────────────────────────────────────────────────────────
