@@ -17,11 +17,10 @@ A cinematic, weather-reactive full-stack weather app with immersive visuals, amb
 - 🎨 Cinematic theme engine — 9 weather-reactive visual scenes
 - 🔊 Procedural ambient audio that matches current weather
 - 🗺️ Embedded OpenStreetMap with precise coordinates
-- 📍 One-tap geolocation
-- 🖼️ Contextual SVG weather illustrations (landscapes per condition)
-- ⚡ Performance-optimised — 60fps canvas, throttled particles
+- 📍 One-tap geolocation (GPS on mobile, IP-based fallback on desktop)
 - ♿ Reduced-motion support and ARIA live regions
 - 🔐 API key secured on the backend — never exposed to the client
+- 🇮🇳 Hardcoded coordinate overrides for 100+ Indian cities for improved accuracy
 
 ---
 
@@ -32,22 +31,27 @@ A cinematic, weather-reactive full-stack weather app with immersive visuals, amb
 - **Canvas:** Custom particle engine (SceneController)
 - **Audio:** Web Audio API (AmbientAudio)
 - **Animation:** Web Animations API + optional GSAP
-- **API:** WeatherAPI.com
+- **Weather API:** OpenWeatherMap (openweathermap.org)
+- **Geocoding:** OpenWeatherMap Geocoding API (`/geo/1.0/direct`)
+- **IP Location:** ip-api.com (server-side, no key required)
 
 ---
 
 ## ⚙️ Architecture
 
 ```
-Browser → Express static server → /api/weather → WeatherAPI.com
-                                → /api/cities  → WeatherAPI.com
+Browser → Express static server → /api/weather   → OpenWeatherMap /data/2.5/weather
+                                                  → OpenWeatherMap /data/2.5/forecast
+                                → /api/cities    → OpenWeatherMap /geo/1.0/direct
+                                → /api/locate    → Local Indian city DB (haversine)
+                                → /api/ip-locate → ip-api.com (server-side)
 ```
 
 ---
 
 ## 🔒 Security
 
-- API key stored in `.env` as `WEATHERAPI_KEY`
+- API key stored in `.env` as `OPENWEATHER_KEY`
 - Express backend proxies all API calls — key never sent to browser
 - `.gitignore` blocks `.env` and `dist/`
 
@@ -57,25 +61,33 @@ Browser → Express static server → /api/weather → WeatherAPI.com
 
 ```
 atmosfera/
-├── index.html               ← App shell + all DOM structure
-├── script.js                ← Entry point
-├── weather-app.js           ← Main app logic
-├── scene-controller.js      ← Canvas particle engine
-├── motion-controller.js     ← Animations + reveal system
-├── ambient-audio.js         ← Web Audio procedural soundscape
-├── weather-illustrations.js ← SVG landscape scenes per weather condition
-├── style.css                ← Core styles (glassmorphism design system)
-├── style-enhancements.css   ← Visual upgrades (illustrations, 3D cards, pills)
-├── style-performance.css    ← Performance overrides (60fps optimisations)
-├── server.js                ← Express API proxy + static server
+├── index.html            ← App shell + all DOM structure
+├── script.js             ← Entry point
+├── weather-app.js        ← Main app logic
+├── scene-controller.js   ← Canvas particle engine
+├── motion-controller.js  ← Animations + reveal system
+├── ambient-audio.js      ← Web Audio procedural soundscape
+├── weather-illustrations.js ← SVG weather illustrations
+├── style.css             ← Core styles (glassmorphism design system)
+├── style-performance.css ← GPU/FPS performance overrides
+├── server.js             ← Express API proxy + static server
 ├── package.json
-└── .env                     ← WEATHERAPI_KEY=your_key_here
+└── .env                  ← OPENWEATHER_KEY=your_key_here
 ```
 
 ---
 
 ## ▶️ Run Locally
 
+**1. Get a free API key**
+Sign up at https://openweathermap.org and grab your key from https://home.openweathermap.org/api_keys
+
+**2. Create `.env` in the project root**
+```
+OPENWEATHER_KEY=your_api_key_here
+```
+
+**3. Install and start**
 ```bash
 npm install
 npm start
@@ -84,10 +96,11 @@ npm start
 Open: http://localhost:3000
 
 For hot-reload during development:
-
 ```bash
 npm run dev
 ```
+
+> ⚠️ OpenWeatherMap API keys can take up to 2 hours to activate after signup. If you get 401 errors, wait and try again.
 
 ---
 
@@ -96,10 +109,24 @@ npm run dev
 1. Push to GitHub
 2. Create a new **Web Service** on Render
 3. Set **Start command**: `npm start`
-4. Add environment variable: `WEATHERAPI_KEY = your_key`
+4. Add environment variable: `OPENWEATHER_KEY = your_key`
 5. Deploy
 
-> **Note:** Render free tier spins down after inactivity. First load may take 30–60 seconds to cold-start.
+---
+
+## 🌐 API Notes
+
+| Feature | Status |
+|---|---|
+| Current temperature | ✅ Accurate |
+| Feels like | ✅ Accurate |
+| Humidity, wind, pressure | ✅ Full support |
+| 5-day forecast | ✅ Full support |
+| 24-hour hourly | ✅ Full support (3-hour intervals) |
+| Sunrise / Sunset | ✅ Full support |
+| UV Index | ⚠️ Not available on free tier (shows 0) |
+| Moon phase | ⚠️ Not available on free tier |
+| Indian city accuracy | ✅ Improved via coordinate overrides |
 
 ---
 
