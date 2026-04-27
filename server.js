@@ -210,6 +210,11 @@ app.get("/api/cities", async (req, res) => {
         // to avoid biasing queries like "bar" toward Bardhaman over Barcelona).
         const isIndiaQuery = qLower.includes("india") || (INDIA_CITY_COORDS[qLower] !== undefined);
 
+        // Check if query looks like a country name (e.g. "spain", "france")
+        // If so, we search for the capital or major cities of that country
+        const countryCode = getCountryCode(qLower);
+        const isCountryQuery = !isIndiaQuery && countryCode && countryCode !== "IN";
+
         // Build local coordinate-based matches for known Indian cities (prefix match)
         const coordMatches = isIndiaQuery
             ? Object.entries(INDIA_CITY_COORDS)
@@ -230,10 +235,20 @@ app.get("/api/cities", async (req, res) => {
                 })
             : [];
 
-        // For India queries run a secondary India-biased search; for global queries just one
-        const searches = isIndiaQuery
-            ? [fetchCitySearch(query), fetchCitySearch(`${query}, India`)]
-            : [fetchCitySearch(query)];
+        // Build search queries:
+        // - India queries: main + India-biased secondary
+        // - Country name queries: search for major cities in that country
+        // - Global queries: just one search
+        let searches;
+        if (isIndiaQuery) {
+            searches = [fetchCitySearch(query), fetchCitySearch(`${query}, India`)];
+        } else if (isCountryQuery) {
+            // User typed a country name — search for cities in that country
+            // OWM format: "city,countrycode" — we search the country code itself to get capital/major cities
+            searches = [fetchCitySearch(`${query},${countryCode}`)];
+        } else {
+            searches = [fetchCitySearch(query)];
+        }
 
         const results = await Promise.allSettled(searches);
 
@@ -252,19 +267,40 @@ app.get("/api/cities", async (req, res) => {
 
         results.forEach(r => { if (r.status === "fulfilled") r.value.forEach(addResult); });
 
-        // Sort alphabetically by city name
-        const sortAlpha = (a, b) => a.name.localeCompare(b.name);
+        // Scoring function for global results:
+        // Score each result to prefer results where the city name STARTS WITH the query
+        // This prevents "Santander, Philippines" from appearing when searching "spain"
+        // and ensures alphabetical ordering within same score tier.
+        const scoreResult = (item) => {
+            const nameLower = item.name.toLowerCase();
+            // Exact match gets highest score
+            if (nameLower === qLower) return 0;
+            // Starts with query gets second
+            if (nameLower.startsWith(qLower)) return 1;
+            // Contains query somewhere
+            if (nameLower.includes(qLower)) return 2;
+            // Country name matches query (e.g. searching "spain" → Spanish cities)
+            if (isCountryQuery) return 3;
+            // Default
+            return 4;
+        };
+
+        // Sort alphabetically by city name within same score tier
+        const sortResults = (a, b) => {
+            const scoreDiff = scoreResult(a) - scoreResult(b);
+            if (scoreDiff !== 0) return scoreDiff;
+            return a.name.localeCompare(b.name);
+        };
 
         // For India queries: Indian cities first (coord matches at top), then others
-        // For global queries: all results sorted alphabetically (OWM already ranks by relevance,
-        // but we re-sort so "ba" → Barcelona, Baghdad, Baku... not random order)
+        // For global queries: sort by relevance score then alphabetically
         const allResults = isIndiaQuery
             ? [
                 ...coordMatches,
-                ...[...indian].sort(sortAlpha),
-                ...[...others].sort(sortAlpha)
+                ...[...indian].sort((a,b) => a.name.localeCompare(b.name)),
+                ...[...others].sort((a,b) => a.name.localeCompare(b.name))
               ]
-            : [...others, ...indian].sort(sortAlpha);
+            : [...others, ...indian].sort(sortResults);
 
         const normalized = normalizeCitySearchResults(allResults).slice(0, 5);
         cityCache.set(cacheKey, { timestamp: Date.now(), payload: normalized });
@@ -442,16 +478,56 @@ async function fetchForecast(query, days) {
         [lat, lon] = query.split(",").map(Number);
     } else {
         // City name → geocode via OWM
-        const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=1&appid=${API_KEY}`;
+        // Use limit=5 so we can pick the best match (OWM sometimes returns obscure
+        // small cities first — e.g. "Switzerland" in Lithuania before the country)
+        const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=5&appid=${API_KEY}`;
         const geoData = await fetchJson(geoUrl);
         if (!Array.isArray(geoData) || geoData.length === 0) {
             const err = new Error(`City not found: ${query}`);
             err.statusCode = 404;
             throw err;
         }
-        lat          = geoData[0].lat;
-        lon          = geoData[0].lon;
-        resolvedName = geoData[0].name;
+
+        // Pick the best match: prefer results where the name closely matches
+        // the query (case-insensitive), and prefer larger/more-known countries.
+        // This prevents "Switzerland, Lithuania" from winning over "Switzerland" (the country's cities).
+        const qNorm = query.trim().toLowerCase();
+
+        // Check if query contains a country hint (e.g. "Paris, France")
+        const commaIdx = query.indexOf(",");
+        let hintedCountryCode = "";
+        if (commaIdx > 0) {
+            const countryHint = query.slice(commaIdx + 1).trim();
+            hintedCountryCode = getCountryCode(countryHint.toLowerCase()) || countryHint.toUpperCase().trim();
+        }
+
+        // Score each candidate — lower is better
+        const scoredGeo = geoData.map(g => {
+            const nameLower = (g.name || "").toLowerCase();
+            let score = 0;
+
+            // Heavy penalty if name doesn't match at all
+            if (!nameLower.includes(qNorm.split(",")[0].trim())) score += 50;
+
+            // Reward exact name match
+            if (nameLower === qNorm.split(",")[0].trim()) score -= 20;
+
+            // If user hinted a country, strongly reward matching it
+            if (hintedCountryCode && g.country === hintedCountryCode) score -= 30;
+
+            // Small reward for larger/more prominent countries (avoid tiny villages)
+            const majorCountries = ["US","GB","DE","FR","ES","IT","JP","CN","AU","CA","BR","IN","RU","MX","KR","NL","SE","NO","DK","PL","CH","AT","BE","PT","GR","TR","AR","ZA","NG","EG","PK","BD"];
+            if (majorCountries.includes(g.country)) score -= 5;
+
+            return { geo: g, score };
+        });
+
+        scoredGeo.sort((a, b) => a.score - b.score);
+        const best = scoredGeo[0].geo;
+
+        lat          = best.lat;
+        lon          = best.lon;
+        resolvedName = best.name;
     }
 
     // Fetch current weather + 5-day forecast (3-hour steps, 40 entries = ~5 days) in parallel
@@ -483,7 +559,9 @@ async function fetchCitySearch(query) {
         country: e.country || "",
         lat:     e.lat,
         lon:     e.lon,
-        url:     ""
+        url:     "",
+        // Store local names for better display
+        localNames: e.local_names || {}
     }));
 }
 
@@ -534,7 +612,7 @@ function normalizeWeather(data, meta) {
         }) || items[0];
 
         const rainChance  = Math.round((items.reduce((s, i) => s + (i.pop || 0), 0) / items.length) * 100);
-        const maxWindKph  = Math.max(...items.map(i => (i.wind?.speed || 0) * 3.6));
+        const maxWindKph  = Math.round(Math.max(...items.map(i => (i.wind?.speed || 0) * 3.6)) * 10) / 10;
         const avgHumidity = Math.round(items.reduce((s, i) => s + (i.main.humidity || 0), 0) / items.length);
         const totalPrecip = items.reduce((s, i) => s + (i.rain?.["3h"] || 0), 0);
 
@@ -568,7 +646,7 @@ function normalizeWeather(data, meta) {
         isDay:         h.sys?.pod === "d",
         chanceOfRain:  Math.round((h.pop || 0) * 100),
         chanceOfSnow:  0,
-        windKph:       (h.wind?.speed || 0) * 3.6,
+        windKph:       Math.round((h.wind?.speed || 0) * 3.6 * 10) / 10,
         humidity:      h.main.humidity,
         cloud:         h.clouds?.all || 0
     }));
@@ -619,8 +697,8 @@ function normalizeWeather(data, meta) {
             feelsLikeC:    cur.main?.feels_like,
             feelsLikeF:    toF(cur.main?.feels_like),
             humidity:      cur.main?.humidity,
-            windKph:       (cur.wind?.speed || 0) * 3.6,
-            windMph:       (cur.wind?.speed || 0) * 2.237,
+            windKph:       Math.round((cur.wind?.speed || 0) * 3.6 * 10) / 10,
+            windMph:       Math.round((cur.wind?.speed || 0) * 2.237 * 10) / 10,
             windDegree:    cur.wind?.deg   || 0,
             windDirection: degToCompass(cur.wind?.deg || 0),
             uv:            0,               // Not available on OWM free tier
