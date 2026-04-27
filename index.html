@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Atmosfera is a cinematic, weather-reactive flagship experience with immersive visuals, ambient sound, and global city search."
+    />
+    <meta name="theme-color" content="#081221" />
+    <title>Atmosfera | Flagship Weather Experience</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300,100;9..144,600,75;9..144,700,75&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Space+Mono:wght@400&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style-enhancements.css" />
+    <link rel="stylesheet" href="style-performance.css" />
+  </head>
+  <body>
+    <!-- Live region for screen readers -->
+    <div id="liveRegion" class="sr-only" aria-live="polite" aria-atomic="true"></div>
+
+    <!-- Cinematic background scene -->
+    <div class="scene-shell" aria-hidden="true">
+      <canvas id="sceneCanvas"></canvas>
+      <div class="scene-gradient scene-gradient-a" data-depth="far"></div>
+      <div class="scene-gradient scene-gradient-b" data-depth="mid"></div>
+      <div class="scene-gradient scene-gradient-c" data-depth="slow"></div>
+      <div class="scene-blob scene-blob-a" data-depth="near"></div>
+      <div class="scene-blob scene-blob-b" data-depth="float"></div>
+      <div class="scene-blob scene-blob-c" data-depth="mid"></div>
+      <div class="scene-grid"></div>
+      <div class="scene-noise"></div>
+    </div>
+
+    <div class="app-shell">
+      <div id="pageRoot" class="page">
+
+        <!-- TOPBAR -->
+        <header class="topbar panel" data-reveal="hero">
+          <a class="brand" href="/" aria-label="Atmosfera home">
+            <div class="brand-mark" aria-hidden="true">
+              <svg width="38" height="38" viewBox="0 0 38 38" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <!-- Outer atmospheric ring -->
+                <circle cx="19" cy="19" r="17" stroke="rgba(150,241,255,0.35)" stroke-width="1.2" fill="none"/>
+                <!-- Inner glow ring -->
+                <circle cx="19" cy="19" r="12" stroke="rgba(150,241,255,0.55)" stroke-width="1" fill="none"/>
+                <!-- Cloud body -->
+                <ellipse cx="19" cy="22" rx="9" ry="5.5" fill="rgba(200,235,255,0.88)"/>
+                <circle cx="14.5" cy="20.5" r="4.2" fill="rgba(220,242,255,0.92)"/>
+                <circle cx="19.5" cy="18.5" r="5.5" fill="rgba(240,250,255,0.96)"/>
+                <circle cx="24" cy="20" r="3.8" fill="rgba(220,242,255,0.92)"/>
+                <!-- Sun peeking behind cloud -->
+                <circle cx="12" cy="14" r="5" fill="rgba(255,210,80,0.90)"/>
+                <line x1="12" y1="7.5" x2="12" y2="9.5" stroke="rgba(255,220,100,0.7)" stroke-width="1.4" stroke-linecap="round"/>
+                <line x1="12" y1="18.5" x2="12" y2="20" stroke="rgba(255,220,100,0.4)" stroke-width="1.4" stroke-linecap="round"/>
+                <line x1="5.5" y1="14" x2="7.5" y2="14" stroke="rgba(255,220,100,0.7)" stroke-width="1.4" stroke-linecap="round"/>
+                <line x1="7.8" y1="9.8" x2="9.2" y2="11.2" stroke="rgba(255,220,100,0.6)" stroke-width="1.2" stroke-linecap="round"/>
+                <line x1="16.2" y1="9.8" x2="14.8" y2="11.2" stroke="rgba(255,220,100,0.6)" stroke-width="1.2" stroke-linecap="round"/>
+                <!-- Rain drops -->
+                <line x1="15" y1="28.5" x2="13.5" y2="32" stroke="rgba(130,210,255,0.75)" stroke-width="1.4" stroke-linecap="round"/>
+                <line x1="19" y1="29" x2="17.5" y2="32.5" stroke="rgba(130,210,255,0.75)" stroke-width="1.4" stroke-linecap="round"/>
+                <line x1="23" y1="28.5" x2="21.5" y2="32" stroke="rgba(130,210,255,0.75)" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+            </div>
+            <div class="brand-copy">
+              <span class="brand-name">Atmosfera</span>
+              <span class="brand-sub">Live Weather Intelligence</span>
+            </div>
+          </a>
+          <div class="topbar-actions">
+            <span id="motionBadge" class="motion-chip" hidden aria-live="polite"></span>
+            <span id="soundHint" class="sound-chip" aria-live="polite">Sound plays with weather &amp; time</span>
+            <button id="audioButton" class="ghost-button" type="button" aria-pressed="true">🔊 Sound on</button>
+          </div>
+        </header>
+
+        <!-- STATUS BANNER -->
+        <div id="statusBanner" class="status-banner" role="status" aria-live="polite" data-tone="info" hidden>
+          Loading weather intelligence...
+        </div>
+
+        <!-- SEARCH PANEL -->
+        <section class="section panel" aria-label="Search" data-reveal>
+          <form id="searchForm" class="command-bar" role="search" aria-label="City weather search">
+            <div class="field-shell">
+              <label for="cityInput" class="sr-only">Search city</label>
+              <input
+                id="cityInput"
+                type="search"
+                name="city"
+                placeholder="Search any city worldwide..."
+                autocomplete="off"
+                spellcheck="false"
+                aria-label="City name"
+                aria-autocomplete="list"
+                aria-controls="suggestionList"
+              />
+              <ul id="suggestionList" class="suggestion-list" role="listbox" aria-label="City suggestions" hidden></ul>
+            </div>
+            <button class="primary-button" type="submit">Search</button>
+            <button id="geoButton" class="secondary-button" type="button" aria-label="Use my current location">
+              Locate me
+            </button>
+          </form>
+          <div id="recentStrip" class="quick-strip" aria-label="Recent and featured cities" role="navigation"></div>
+        </section>
+
+        <!-- HERO PANEL -->
+        <main class="panel panel-hero" data-reveal="hero" aria-label="Current weather">
+          <div class="hero-copy">
+            <div class="hero-meta-row">
+              <span id="heroEyebrow" class="eyebrow" aria-label="Last updated">--</span>
+              <span id="heroContextChip" class="context-chip">--</span>
+            </div>
+            <h1 id="heroTitle" class="hero-title">Loading...</h1>
+            <p id="heroDescription" class="hero-description">Fetching live weather intelligence for your city.</p>
+            <div class="hero-reading">
+              <div class="hero-primary">
+                <div id="heroTemperature" class="hero-temperature" aria-label="Current temperature">--</div>
+                <div id="heroCondition" class="hero-condition">--</div>
+              </div>
+              <div class="hero-supporting">
+                <span id="heroHighLow">High -- / Low --</span>
+                <span id="heroFeelsLike">Feels like --</span>
+              </div>
+            </div>
+          </div>
+          <aside class="hero-side" aria-label="Local time and scene">
+            <div class="mini-panel emphasis">
+              <span class="mini-label">Local time</span>
+              <strong id="localTime" class="mini-value">--</strong>
+              <span id="localDate">--</span>
+            </div>
+            <div class="mini-panel">
+              <span class="mini-label">Sun cycle</span>
+              <strong id="sunCycle" class="mini-value">--</strong>
+              <span id="sunTimes">Sunrise -- / Sunset --</span>
+            </div>
+            <div class="mini-panel">
+              <span class="mini-label">Visual scene</span>
+              <strong id="sceneLabel" class="mini-value">--</strong>
+              <span id="sceneSummary">--</span>
+            </div>
+          </aside>
+        </main>
+
+        <!-- DETAIL GRID -->
+        <section class="section panel" aria-label="Weather details" data-reveal>
+          <div class="section-heading">
+            <h2>Conditions</h2>
+          </div>
+          <div id="detailGrid" class="detail-grid" role="list" aria-label="Current conditions"></div>
+        </section>
+
+        <!-- HOURLY FORECAST -->
+        <section class="section panel" aria-label="Hourly forecast" data-reveal>
+          <div class="section-heading">
+            <h2>Hourly</h2>
+          </div>
+          <div id="hourlyRail" class="hourly-rail" role="list" aria-label="Hourly temperature forecast"></div>
+        </section>
+
+        <!-- DAILY FORECAST -->
+        <section class="section panel" aria-label="Daily forecast" data-reveal>
+          <div class="section-heading">
+            <h2>5-Day Forecast</h2>
+          </div>
+          <div id="forecastGrid" class="forecast-grid" role="list" aria-label="Daily forecast cards"></div>
+        </section>
+
+        <!-- MAP + FACTS -->
+        <div class="context-grid">
+          <div class="panel map-panel" data-reveal>
+            <div class="panel-heading">
+              <h2>Location</h2>
+              <a id="mapLink" class="inline-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Open location in OpenStreetMap" aria-disabled="true" tabindex="-1">
+                Open map ↗
+              </a>
+            </div>
+            <div class="map-frame-shell">
+              <iframe
+                id="mapFrame"
+                title="City location map"
+                loading="lazy"
+                referrerpolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin"
+              ></iframe>
+            </div>
+            <p id="mapCaption" class="map-caption" aria-live="polite">Waiting for coordinates.</p>
+          </div>
+          <div class="panel facts-panel" data-reveal>
+            <div class="panel-heading">
+              <h2>Location facts</h2>
+            </div>
+            <dl id="factsList" class="facts-list" aria-label="Location facts"></dl>
+          </div>
+        </div>
+
+        <!-- WATCHLIST / FEATURED CITIES -->
+        <section class="section panel" aria-label="Featured cities" data-reveal>
+          <div class="section-heading">
+            <h2>City watchlist</h2>
+          </div>
+          <div id="watchlistGrid" class="watchlist-grid" role="list" aria-label="Featured city weather cards"></div>
+        </section>
+
+      </div><!-- /#pageRoot -->
+    </div><!-- /.app-shell -->
+
+    <script type="module" src="script.js"></script>
+  </body>
+</html>

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head><title>Location Debug</title></head>
+<body>
+<h2>Location Debug Tool</h2>
+<button onclick="runAll()" style="padding:12px 24px;font-size:16px;cursor:pointer">Run All Location Tests</button>
+<pre id="out" style="background:#111;color:#0f0;padding:20px;margin-top:20px;font-size:13px;white-space:pre-wrap"></pre>
+<script>
+const out = document.getElementById('out');
+function log(msg) { out.textContent += msg + '\n'; }
+
+async function runAll() {
+    out.textContent = '';
+    log('=== LOCATION DEBUG ===\n');
+
+    // Test 1: ip-api.com
+    log('--- Test 1: ip-api.com (best for India) ---');
+    try {
+        const r = await fetch('http://ip-api.com/json/?fields=status,city,regionName,country,lat,lon,isp,query');
+        const d = await r.json();
+        log('Your public IP: ' + d.query);
+        log('ISP: ' + d.isp);
+        log('City: ' + d.city);
+        log('Region: ' + d.regionName);
+        log('Country: ' + d.country);
+        log('Coords: ' + d.lat + ', ' + d.lon);
+    } catch(e) { log('FAILED: ' + e.message); }
+
+    // Test 2: ipapi.co
+    log('\n--- Test 2: ipapi.co ---');
+    try {
+        const r = await fetch('https://ipapi.co/json/');
+        const d = await r.json();
+        log('City: ' + d.city);
+        log('Region: ' + d.region);
+        log('IP: ' + d.ip);
+        log('Org: ' + d.org);
+        log('Coords: ' + d.latitude + ', ' + d.longitude);
+    } catch(e) { log('FAILED: ' + e.message); }
+
+    // Test 3: ipwho.is
+    log('\n--- Test 3: ipwho.is ---');
+    try {
+        const r = await fetch('https://ipwho.is/');
+        const d = await r.json();
+        log('City: ' + d.city);
+        log('Region: ' + d.region);
+        log('IP: ' + d.ip);
+        log('Coords: ' + d.latitude + ', ' + d.longitude);
+    } catch(e) { log('FAILED: ' + e.message); }
+
+    // Test 4: Browser geolocation
+    log('\n--- Test 4: Browser Geolocation ---');
+    if (!navigator.geolocation) {
+        log('Not supported');
+    } else {
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                log('Lat: ' + pos.coords.latitude);
+                log('Lon: ' + pos.coords.longitude);
+                log('Accuracy: ' + Math.round(pos.coords.accuracy) + ' meters');
+                if (pos.coords.accuracy > 5000) {
+                    log('WARNING: Very low accuracy - this is WiFi/IP based, not GPS');
+                } else {
+                    log('Good accuracy - GPS signal detected');
+                }
+            },
+            (err) => log('FAILED: ' + err.message),
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+        );
+    }
+
+    // Test 5: freeipapi.com
+    log('\n--- Test 5: freeipapi.com ---');
+    try {
+        const r = await fetch('https://freeipapi.com/api/json');
+        const d = await r.json();
+        log('City: ' + d.cityName);
+        log('Region: ' + d.regionName);
+        log('IP: ' + d.ipAddress);
+        log('Coords: ' + d.latitude + ', ' + d.longitude);
+    } catch(e) { log('FAILED: ' + e.message); }
+}
+</script>
+</body>
+</html>

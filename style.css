@@ -1,0 +1,1993 @@
+/* ============================================================
+   ATMOSFERA — Premium Glassmorphism + Liquid Glass Design
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300,100;9..144,600,75;9..144,700,75&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=Space+Mono:wght@400&display=swap');
+
+/* ============================================================
+   DESIGN TOKENS
+   ============================================================ */
+:root {
+    /* Scene colors — overridden per theme */
+    --scene-start: #07152c;
+    --scene-mid: #204c86;
+    --scene-end: #ffb36b;
+    --accent: #96f1ff;
+    --accent-strong: #ffbf74;
+    --liquid-a: rgba(151, 230, 255, 0.36);
+    --liquid-b: rgba(255, 208, 136, 0.32);
+    --liquid-c: rgba(102, 161, 255, 0.22);
+    --glass-surface: rgba(11, 24, 47, 0.46);
+    --glass-strong: rgba(9, 18, 38, 0.72);
+    --glass-edge: rgba(255, 255, 255, 0.16);
+    --card-glow: rgba(147, 217, 255, 0.34);
+    --shadow-color: rgba(5, 18, 42, 0.34);
+
+    /* Fixed tokens */
+    --text: #f2f5fc;
+    --muted: rgba(228, 236, 252, 0.78);
+    --subtle: rgba(210, 222, 248, 0.52);
+    --radius-xl: 28px;
+    --radius-lg: 22px;
+    --radius-md: 16px;
+    --radius-sm: 12px;
+    --shadow-lg: 0 28px 80px var(--shadow-color), 0 0 0 0.5px var(--glass-edge);
+    --shadow-md: 0 16px 48px rgba(0, 0, 0, 0.24), 0 0 0 0.5px rgba(255,255,255,0.06);
+    --border-soft: 1px solid var(--glass-edge);
+    --blur-glass: blur(24px) saturate(160%);
+    --blur-heavy: blur(48px) saturate(180%);
+    --font-display: "Fraunces", Georgia, serif;
+    --font-body: "DM Sans", system-ui, sans-serif;
+    --font-mono: "Space Mono", monospace;
+
+    /* Animation timing */
+    --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+    --dur-fast: 160ms;
+    --dur-mid: 320ms;
+    --dur-slow: 640ms;
+}
+
+/* ============================================================
+   RESET + BASE
+   ============================================================ */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+    min-height: 100vh;
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--text);
+    background:
+        radial-gradient(ellipse at 15% 12%, var(--liquid-a), transparent 38%),
+        radial-gradient(ellipse at 85% 10%, var(--liquid-b), transparent 32%),
+        radial-gradient(ellipse at 70% 78%, var(--liquid-c), transparent 30%),
+        radial-gradient(ellipse at 28% 88%, rgba(255,255,255,0.06), transparent 22%),
+        linear-gradient(155deg, var(--scene-start) 0%, var(--scene-mid) 48%, var(--scene-end) 100%);
+    background-attachment: fixed;
+    transition: background 1100ms var(--ease-smooth);
+    overflow-x: hidden;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -3;
+    background:
+        linear-gradient(180deg, rgba(4, 9, 18, 0.06), rgba(4, 9, 18, 0.44)),
+        radial-gradient(circle at 50% 0%, rgba(255,255,255,0.07), transparent 34%);
+    pointer-events: none;
+}
+
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at 22% 82%, var(--liquid-c), transparent 22%),
+        radial-gradient(ellipse at 88% 38%, rgba(255,255,255,0.07), transparent 20%);
+    mix-blend-mode: screen;
+    opacity: 0.9;
+}
+
+body[data-motion="reduced"] { scroll-behavior: auto; }
+
+a { color: inherit; text-decoration: none; }
+button, input { font: inherit; cursor: pointer; }
+iframe { color-scheme: light; }
+
+/* ============================================================
+   SCREEN-READER ONLY
+   ============================================================ */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* ============================================================
+   SCENE — CINEMATIC BACKGROUND
+   ============================================================ */
+.scene-shell {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+#sceneCanvas,
+.scene-gradient,
+.scene-blob,
+.scene-grid,
+.scene-noise {
+    position: absolute;
+    inset: 0;
+}
+
+#sceneCanvas {
+    width: 100%;
+    height: 100%;
+    mix-blend-mode: screen;
+    opacity: 0.72;
+}
+
+.scene-gradient {
+    filter: blur(80px);
+    opacity: 0.85;
+    will-change: transform;
+}
+
+.scene-gradient-a {
+    background: radial-gradient(ellipse at 16% 20%, var(--liquid-a), transparent 40%);
+    animation: gradientDrift 22s ease-in-out infinite;
+}
+
+.scene-gradient-b {
+    background: radial-gradient(ellipse at 80% 22%, var(--liquid-b), transparent 36%);
+    animation: gradientDrift 28s ease-in-out infinite reverse;
+}
+
+.scene-gradient-c {
+    background: radial-gradient(ellipse at 52% 82%, var(--liquid-c), transparent 32%);
+    animation: gradientDrift 18s ease-in-out infinite 4s;
+}
+
+.scene-blob {
+    border-radius: 50%;
+    filter: blur(40px);
+    opacity: 0.5;
+    mix-blend-mode: screen;
+    will-change: transform;
+}
+
+.scene-blob-a {
+    top: 2%;
+    left: 60%;
+    width: 36rem;
+    height: 36rem;
+    background: radial-gradient(circle at 35% 35%, rgba(255,255,255,0.28), transparent 60%);
+    animation: blobFloat 20s ease-in-out infinite;
+}
+
+.scene-blob-b {
+    top: 52%;
+    left: -10%;
+    width: 30rem;
+    height: 30rem;
+    background: radial-gradient(circle at 30% 35%, var(--liquid-a), transparent 65%);
+    animation: blobFloat 26s ease-in-out infinite 3s reverse;
+}
+
+.scene-blob-c {
+    top: 25%;
+    left: 22%;
+    width: 22rem;
+    height: 22rem;
+    background: radial-gradient(circle at 50% 50%, rgba(255,255,255,0.1), transparent 64%);
+    animation: blobFloat 18s ease-in-out infinite 6s;
+}
+
+.scene-grid {
+    background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 5.5rem 5.5rem;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,0.3) 0%, transparent 85%);
+    opacity: 0.28;
+}
+
+.scene-noise {
+    opacity: 0.055;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.78' numOctaves='4'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E");
+}
+
+@keyframes blobFloat {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); }
+    33% { transform: translate3d(12px, -22px, 0) scale(1.06) rotate(2deg); }
+    66% { transform: translate3d(-8px, 10px, 0) scale(0.97) rotate(-1deg); }
+}
+
+@keyframes gradientDrift {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    50% { transform: translate3d(18px, -12px, 0) scale(1.08); }
+}
+
+/* ============================================================
+   LAYOUT
+   ============================================================ */
+.app-shell {
+    width: min(1340px, calc(100% - 40px));
+    margin: 0 auto;
+    padding: 26px 0 64px;
+}
+
+.page {
+    display: grid;
+    gap: 20px;
+}
+
+/* ============================================================
+   GLASS PANEL — BASE
+   ============================================================ */
+.panel,
+.section,
+.context-grid > .panel,
+.status-banner {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--glass-edge);
+    background:
+        linear-gradient(160deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.04) 30%, transparent 60%),
+        var(--glass-surface);
+    box-shadow: var(--shadow-lg);
+    backdrop-filter: var(--blur-glass);
+    -webkit-backdrop-filter: var(--blur-glass);
+    isolation: isolate;
+}
+
+/* Liquid glass inner highlight */
+.panel::before,
+.section::before,
+.context-grid > .panel::before,
+.status-banner::before {
+    content: "";
+    position: absolute;
+    inset: -30%;
+    background: radial-gradient(circle, var(--card-glow), transparent 54%);
+    opacity: 0.18;
+    pointer-events: none;
+    border-radius: 50%;
+    z-index: -1;
+    transition: opacity 600ms var(--ease-smooth);
+}
+
+/* Inner glass rim */
+.panel::after,
+.section::after,
+.context-grid > .panel::after,
+.status-banner::after {
+    content: "";
+    position: absolute;
+    inset: 1px;
+    border-radius: calc(var(--radius-xl) - 1px);
+    border: 1px solid rgba(255,255,255,0.06);
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* ============================================================
+   TOPBAR
+   ============================================================ */
+.topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 24px;
+    margin-bottom: 16px;
+    border-radius: var(--radius-xl);
+}
+
+.topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+/* ============================================================
+   BRAND
+   ============================================================ */
+.brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.brand-mark {
+    width: 44px;
+    height: 44px;
+    border-radius: 16px;
+    position: relative;
+    flex-shrink: 0;
+    background:
+        radial-gradient(circle at 28% 26%, rgba(255,255,255,0.92), transparent 32%),
+        linear-gradient(135deg, color-mix(in srgb, var(--accent) 80%, white), color-mix(in srgb, var(--accent-strong) 80%, white));
+    box-shadow:
+        0 12px 28px color-mix(in srgb, var(--accent) 26%, transparent),
+        inset 0 1px 0 rgba(255,255,255,0.5);
+    transition: transform var(--dur-mid) var(--ease-spring), box-shadow var(--dur-mid) var(--ease-spring);
+}
+
+.brand-mark::after {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border: 1px solid rgba(255,255,255,0.32);
+    border-radius: 10px;
+}
+
+.brand:hover .brand-mark {
+    transform: rotate(-8deg) scale(1.08);
+    box-shadow: 0 18px 38px color-mix(in srgb, var(--accent) 36%, transparent);
+}
+
+.brand-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.brand-name {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.05em;
+    line-height: 1;
+}
+
+.brand-sub,
+.mini-label,
+.section-kicker,
+.hourly-time,
+.facts-list dt {
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--subtle);
+}
+
+/* ============================================================
+   CHIPS + BADGES
+   ============================================================ */
+.motion-chip,
+.sound-chip,
+.ghost-button,
+.context-chip,
+.eyebrow,
+.quick-pill,
+.inline-link {
+    border: var(--border-soft);
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    transition: all var(--dur-fast) var(--ease-smooth);
+}
+
+.motion-chip,
+.sound-chip {
+    padding: 0.62rem 1rem;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+.ghost-button,
+.primary-button,
+.secondary-button,
+.quick-pill {
+    border-radius: 999px;
+    padding: 0.82rem 1.2rem;
+    color: var(--text);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    position: relative;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.ghost-button,
+.secondary-button {
+    border: var(--border-soft);
+    background: rgba(255,255,255,0.07);
+}
+
+.ghost-button::after,
+.secondary-button::after,
+.quick-pill::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0);
+    transition: background var(--dur-fast) var(--ease-smooth);
+    border-radius: inherit;
+}
+
+.ghost-button:hover::after,
+.secondary-button:hover::after,
+.quick-pill:hover::after {
+    background: rgba(255,255,255,0.06);
+}
+
+.primary-button {
+    border: 0;
+    color: #060e1c;
+    font-weight: 800;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
+    box-shadow: 0 14px 32px color-mix(in srgb, var(--accent) 28%, transparent);
+    transition: all var(--dur-fast) var(--ease-spring);
+}
+
+.primary-button:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 20px 44px color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+.ghost-button:hover,
+.secondary-button:hover,
+.quick-pill:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255,255,255,0.22);
+}
+
+.ghost-button:active,
+.secondary-button:active,
+.primary-button:active,
+.quick-pill:active {
+    transform: translateY(0) scale(0.98);
+}
+
+.inline-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.62rem 1rem;
+    border-radius: 999px;
+    font-size: 0.88rem;
+    font-weight: 500;
+    gap: 6px;
+    transition: all var(--dur-fast) var(--ease-smooth);
+}
+
+.inline-link:hover {
+    transform: translateY(-2px);
+    background: rgba(255,255,255,0.12);
+    border-color: rgba(255,255,255,0.22);
+}
+
+.inline-link[aria-disabled="true"] {
+    opacity: 0.45;
+    pointer-events: none;
+}
+
+/* ============================================================
+   HERO SECTION
+   ============================================================ */
+.panel-hero {
+    display: grid;
+    grid-template-columns: 1.6fr 0.88fr;
+    gap: 24px;
+    padding: clamp(28px, 4.5vw, 52px);
+}
+
+.hero-copy {
+    display: grid;
+    gap: 26px;
+    position: relative;
+    z-index: 1;
+}
+
+.hero-side {
+    display: grid;
+    gap: 14px;
+    align-content: start;
+    position: relative;
+    z-index: 1;
+}
+
+.hero-meta-row {
+    display: flex;
+    align-items: start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.eyebrow,
+.context-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.52rem 0.9rem;
+    font-size: 0.78rem;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.hero-title,
+.section-heading h2,
+.panel-heading h2 {
+    font-family: var(--font-display);
+    letter-spacing: -0.055em;
+    margin: 0;
+    line-height: 0.93;
+}
+
+.hero-title {
+    font-size: clamp(2.8rem, 7.5vw, 5.6rem);
+    font-weight: 700;
+    max-width: 12ch;
+    background: linear-gradient(160deg, var(--text) 0%, rgba(220,230,255,0.88) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.hero-description,
+.section-copy,
+.map-caption,
+.detail-card p,
+.forecast-card p,
+.watchlist-card p {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.72;
+    font-size: 0.95rem;
+}
+
+.hero-reading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 18px;
+    flex-wrap: wrap;
+}
+
+.hero-primary {
+    display: grid;
+    gap: 8px;
+}
+
+.hero-temperature {
+    font-family: var(--font-display);
+    font-size: clamp(4rem, 10vw, 6.6rem);
+    font-weight: 300;
+    line-height: 0.88;
+    letter-spacing: -0.07em;
+    background: linear-gradient(160deg, var(--accent) 0%, var(--text) 60%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 6px 28px color-mix(in srgb, var(--accent) 30%, transparent));
+    transition: all 500ms var(--ease-spring);
+}
+
+.hero-condition {
+    font-size: 1rem;
+    color: var(--muted);
+    font-weight: 400;
+}
+
+.hero-supporting,
+.mini-panel {
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255,255,255,0.1);
+    background:
+        linear-gradient(160deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 30%, transparent),
+        rgba(4, 10, 20, 0.22);
+    box-shadow: var(--shadow-md);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+}
+
+.hero-supporting {
+    display: grid;
+    gap: 10px;
+    padding: 16px 20px;
+    min-width: 210px;
+    font-size: 0.93rem;
+}
+
+.hero-supporting span,
+.mini-panel span:not(.mini-label) {
+    color: var(--muted);
+}
+
+/* ============================================================
+   SEARCH / COMMAND BAR
+   ============================================================ */
+.command-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.field-shell {
+    position: relative;
+}
+
+.field-shell input {
+    width: 100%;
+    min-height: 56px;
+    padding: 0 22px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.13);
+    background: rgba(5, 10, 20, 0.36);
+    color: var(--text);
+    outline: none;
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.07),
+        0 10px 24px rgba(0,0,0,0.14);
+    transition: border-color var(--dur-fast) var(--ease-smooth),
+                box-shadow var(--dur-fast) var(--ease-smooth),
+                background var(--dur-fast) var(--ease-smooth);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    font-size: 0.95rem;
+}
+
+.field-shell input::placeholder {
+    color: var(--subtle);
+}
+
+.field-shell input:focus {
+    border-color: color-mix(in srgb, var(--accent) 68%, white);
+    box-shadow:
+        0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent),
+        0 16px 32px rgba(0,0,0,0.18);
+    background: rgba(5, 10, 20, 0.48);
+}
+
+/* ============================================================
+   SUGGESTIONS
+   ============================================================ */
+.suggestion-list {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    list-style: none;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.12);
+    background: rgba(6, 10, 22, 0.94);
+    box-shadow: 0 28px 72px rgba(0,0,0,0.42);
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    padding: 8px;
+    overflow: hidden;
+}
+
+.suggestion-list button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0.88rem 1rem;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: var(--text);
+    text-align: left;
+    transition: background var(--dur-fast) var(--ease-smooth);
+    font-size: 0.93rem;
+}
+
+.suggestion-list button small {
+    color: var(--subtle);
+    font-size: 0.78rem;
+}
+
+.suggestion-list button.is-active,
+.suggestion-list button:hover {
+    background: rgba(255,255,255,0.07);
+}
+
+/* ============================================================
+   QUICK STRIP
+   ============================================================ */
+.quick-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.quick-pill {
+    border: var(--border-soft);
+    font-size: 0.84rem;
+    padding: 0.52rem 0.96rem;
+    color: var(--muted);
+}
+
+/* ============================================================
+   MINI PANELS (SIDE CARDS)
+   ============================================================ */
+.mini-panel {
+    display: grid;
+    gap: 6px;
+    padding: 20px 22px;
+    transition: transform var(--dur-mid) var(--ease-spring),
+                border-color var(--dur-mid) var(--ease-smooth);
+}
+
+.mini-panel:hover {
+    transform: translateY(-3px);
+    border-color: rgba(255,255,255,0.18);
+}
+
+.mini-panel strong {
+    font-size: 1.32rem;
+    letter-spacing: -0.04em;
+    font-weight: 600;
+    color: var(--text);
+    font-family: var(--font-mono);
+}
+
+.mini-panel.emphasis {
+    background:
+        linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 40%),
+        rgba(4, 10, 20, 0.26);
+    border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+/* ============================================================
+   REVEAL ANIMATIONS
+   ============================================================ */
+[data-reveal] {
+    opacity: 0;
+    will-change: opacity, transform;
+}
+
+[data-reveal].is-visible {
+    opacity: 1;
+}
+
+/* ============================================================
+   STATUS BANNER
+   ============================================================ */
+.status-banner {
+    display: flex;
+    align-items: center;
+    min-height: 62px;
+    padding: 16px 28px;
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: var(--text);
+    gap: 12px;
+}
+
+.status-banner::before {
+    content: "●";
+    font-size: 0.6rem;
+    opacity: 0.7;
+    flex-shrink: 0;
+}
+
+.status-banner[data-tone="success"] {
+    border-color: rgba(100, 230, 200, 0.32);
+    background:
+        linear-gradient(160deg, rgba(100, 255, 200, 0.07), transparent 36%),
+        rgba(8, 32, 28, 0.52);
+}
+
+.status-banner[data-tone="error"] {
+    border-color: rgba(255, 120, 120, 0.32);
+    background:
+        linear-gradient(160deg, rgba(255, 120, 120, 0.07), transparent 36%),
+        rgba(42, 10, 14, 0.58);
+}
+
+.status-banner[data-tone="info"] {
+    border-color: rgba(180, 210, 255, 0.22);
+}
+
+/* ============================================================
+   SECTION LAYOUT
+   ============================================================ */
+.section {
+    padding: 28px 30px;
+}
+
+.section-heading,
+.panel-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 22px;
+}
+
+.section-heading h2,
+.panel-heading h2 {
+    font-size: clamp(1.5rem, 2.8vw, 2.1rem);
+    font-weight: 600;
+}
+
+/* ============================================================
+   DETAIL GRID
+   ============================================================ */
+.detail-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 14px;
+}
+
+/* ============================================================
+   CARDS — BASE GLASS
+   ============================================================ */
+.detail-card,
+.forecast-card,
+.watchlist-card,
+.empty-card,
+.hourly-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255,255,255,0.1);
+    background:
+        linear-gradient(160deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.03) 26%, transparent),
+        rgba(4, 8, 18, 0.18);
+    box-shadow: 0 14px 36px rgba(0,0,0,0.16), 0 0 0 0.5px rgba(255,255,255,0.04);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    transition: transform var(--dur-mid) var(--ease-spring),
+                border-color var(--dur-mid) var(--ease-smooth),
+                box-shadow var(--dur-mid) var(--ease-smooth);
+}
+
+/* Card glow layer */
+.detail-card::before,
+.forecast-card::before,
+.watchlist-card::before,
+.empty-card::before,
+.hourly-card::before {
+    content: "";
+    position: absolute;
+    inset: -50%;
+    background: radial-gradient(circle, color-mix(in srgb, var(--card-glow) 50%, transparent), transparent 55%);
+    opacity: 0.14;
+    pointer-events: none;
+    z-index: -1;
+    transition: opacity var(--dur-mid) var(--ease-smooth);
+}
+
+.detail-card:hover::before,
+.forecast-card:hover::before,
+.watchlist-card:hover::before,
+.hourly-card:hover::before {
+    opacity: 0.28;
+}
+
+.detail-card:hover,
+.forecast-card:hover,
+.watchlist-card:hover,
+.hourly-card:hover {
+    transform: translateY(-4px);
+    border-color: rgba(255,255,255,0.18);
+    box-shadow: 0 24px 52px rgba(0,0,0,0.24);
+}
+
+.detail-card,
+.forecast-card,
+.watchlist-card,
+.empty-card {
+    padding: 20px;
+}
+
+.detail-card span,
+.forecast-card span,
+.watchlist-card span,
+.hourly-card span:not(.hourly-condition),
+.map-caption,
+.facts-list dt {
+    color: var(--subtle);
+    font-size: 0.82rem;
+}
+
+.detail-card strong,
+.forecast-card strong,
+.watchlist-card strong,
+.hourly-card strong {
+    display: block;
+    margin: 10px 0 6px;
+    font-size: 1.44rem;
+    line-height: 1.06;
+    letter-spacing: -0.04em;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--text);
+}
+
+/* ============================================================
+   HOURLY RAIL
+   ============================================================ */
+.hourly-rail {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(152px, 1fr);
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.12) transparent;
+}
+
+.hourly-rail::-webkit-scrollbar {
+    height: 4px;
+}
+
+.hourly-rail::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.hourly-rail::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.14);
+    border-radius: 99px;
+}
+
+.hourly-card {
+    display: grid;
+    gap: 8px;
+    min-height: 155px;
+    padding: 18px;
+    align-content: start;
+}
+
+.hourly-condition {
+    color: var(--text) !important;
+    font-weight: 500;
+    font-size: 0.9rem;
+}
+
+.hourly-meta {
+    font-size: 0.84rem;
+    color: var(--subtle);
+}
+
+/* ============================================================
+   FORECAST GRID
+   ============================================================ */
+.forecast-grid,
+.watchlist-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 14px;
+}
+
+.forecast-card-current {
+    background:
+        linear-gradient(160deg, color-mix(in srgb, var(--accent) 18%, transparent), transparent 36%),
+        rgba(4, 8, 16, 0.22);
+    border-color: color-mix(in srgb, var(--accent) 32%, transparent);
+}
+
+/* ============================================================
+   WATCHLIST
+   ============================================================ */
+.watchlist-card {
+    color: var(--text);
+    text-align: left;
+}
+
+.watchlist-card:hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, white);
+}
+
+/* ============================================================
+   CONTEXT GRID (MAP + FACTS)
+   ============================================================ */
+.context-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 0.9fr;
+    gap: 20px;
+}
+
+.map-panel,
+.facts-panel {
+    padding: 28px;
+    position: relative;
+    z-index: 1;
+}
+
+.map-frame-shell {
+    position: relative;
+    overflow: hidden;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.1);
+    min-height: 300px;
+    background: rgba(4, 8, 16, 0.28);
+    margin-top: 16px;
+}
+
+.map-frame-shell iframe {
+    width: 100%;
+    height: 300px;
+    border: 0;
+    display: block;
+    filter: saturate(0.8) contrast(1.04) brightness(0.92);
+}
+
+.map-caption {
+    margin-top: 12px;
+    font-size: 0.84rem;
+}
+
+/* ============================================================
+   FACTS LIST
+   ============================================================ */
+.facts-list {
+    display: grid;
+    gap: 14px;
+    margin-top: 4px;
+}
+
+.facts-list div {
+    padding-bottom: 14px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display: grid;
+    gap: 4px;
+}
+
+.facts-list div:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
+}
+
+.facts-list dt {
+    margin-bottom: 2px;
+}
+
+.facts-list dd {
+    margin: 0;
+    color: var(--text);
+    font-size: 0.93rem;
+    font-weight: 500;
+}
+
+/* ============================================================
+   SKELETON LOADING
+   ============================================================ */
+.skeleton-card,
+.facts-skeleton {
+    min-height: 128px;
+    background:
+        linear-gradient(105deg,
+            rgba(255,255,255,0.04) 16%,
+            rgba(255,255,255,0.1) 26%,
+            rgba(255,255,255,0.04) 36%),
+        rgba(255,255,255,0.03);
+    background-size: 220% 100%;
+    border-radius: var(--radius-lg);
+    border: 1px solid rgba(255,255,255,0.06);
+    animation: shimmer 1.6s linear infinite;
+}
+
+.facts-skeleton {
+    min-height: 58px;
+    border-radius: var(--radius-md);
+}
+
+/* ============================================================
+   EMPTY CARDS
+   ============================================================ */
+.empty-card {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 112px;
+    color: var(--muted);
+    text-align: center;
+    font-size: 0.9rem;
+}
+
+/* ============================================================
+   KEYFRAMES
+   ============================================================ */
+@keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -40% 0; }
+}
+
+@keyframes fadeUp {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 22px, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+@keyframes pulseGlow {
+    0%, 100% { opacity: 0.18; }
+    50% { opacity: 0.32; }
+}
+
+/* ============================================================
+   SECTION HEADING TYPOGRAPHY
+   ============================================================ */
+.section-heading h2,
+.panel-heading h2 {
+    font-size: clamp(1.55rem, 2.8vw, 2.1rem);
+    background: linear-gradient(155deg, var(--text) 30%, rgba(200,218,255,0.82) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: inline;
+}
+
+/* ============================================================
+   RESPONSIVE — 1100px
+   ============================================================ */
+@media (max-width: 1100px) {
+    .panel-hero,
+    .context-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .detail-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .hero-title {
+        max-width: 100%;
+        font-size: clamp(2.6rem, 7.5vw, 4.5rem);
+    }
+}
+
+/* ============================================================
+   RESPONSIVE — 760px
+   ============================================================ */
+@media (max-width: 760px) {
+    .app-shell {
+        width: min(100% - 20px, 1340px);
+        padding-top: 16px;
+    }
+
+    .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .topbar-actions {
+        justify-content: flex-start;
+        width: 100%;
+    }
+
+    .command-bar {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-reading,
+    .hero-meta-row,
+    .section-heading,
+    .panel-heading {
+        flex-direction: column;
+    }
+
+    .scene-gradient,
+    .scene-blob {
+        filter: blur(48px);
+    }
+
+    .scene-blob-a,
+    .scene-blob-b {
+        width: 22rem;
+        height: 22rem;
+    }
+}
+
+/* ============================================================
+   RESPONSIVE — 560px
+   ============================================================ */
+@media (max-width: 560px) {
+    .section,
+    .map-panel,
+    .facts-panel,
+    .status-banner {
+        padding: 20px;
+    }
+
+    .panel-hero {
+        padding: 22px;
+    }
+
+    .detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .hero-title {
+        font-size: clamp(2.4rem, 12vw, 3.6rem);
+    }
+
+    .hero-temperature {
+        font-size: clamp(3.5rem, 17vw, 5rem);
+    }
+
+    .forecast-grid,
+    .watchlist-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .map-frame-shell iframe {
+        height: 260px;
+    }
+}
+
+/* ============================================================
+   REDUCED MOTION
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .scene-blob,
+    .scene-gradient {
+        animation: none;
+        opacity: 0.06;
+    }
+
+    .scene-grid,
+    .scene-noise {
+        opacity: 0.05;
+    }
+
+    [data-reveal] {
+        opacity: 1;
+    }
+}
+/* ── LOGO SVG OVERRIDE ────────────────────────────────────────────────────── */
+.brand-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: visible;
+}
+.brand-mark svg {
+    width: 38px;
+    height: 38px;
+    filter: drop-shadow(0 0 8px rgba(150, 241, 255, 0.5));
+    transition: filter var(--dur-mid) var(--ease-spring), transform var(--dur-mid) var(--ease-spring);
+}
+.brand:hover .brand-mark svg {
+    filter: drop-shadow(0 0 14px rgba(150, 241, 255, 0.8));
+    transform: scale(1.08);
+}
+.brand-mark::after { display: none; }
+
+/* ── SUGGESTION TWO-LINE LAYOUT ──────────────────────────────────────────── */
+.suggestion-list {
+    max-height: 420px;
+    overflow-y: auto;
+}
+.suggestion-list button {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+}
+.sugg-primary {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.3;
+}
+.sugg-meta {
+    font-size: 0.78rem;
+    color: var(--subtle);
+    line-height: 1.2;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   PERFORMANCE + SMOOTHNESS OVERRIDES
+   ══════════════════════════════════════════════════════════════ */
+
+/* GPU-accelerate the canvas and background layers */
+#sceneCanvas {
+    will-change: contents;
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+.scene-shell {
+    transform: translateZ(0);
+}
+.scene-gradient,
+.scene-blob {
+    transform: translateZ(0);
+    backface-visibility: hidden;
+}
+
+/* Reduce blur cost on mobile */
+@media (max-width: 760px) {
+    .scene-gradient { filter: blur(48px); }
+    .scene-blob     { filter: blur(56px); }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SEARCH BAR — LARGER, MORE BREATHING ROOM
+   ══════════════════════════════════════════════════════════════ */
+.command-bar {
+    gap: 12px;
+    padding: 4px 0;
+}
+.field-shell input {
+    min-height: 64px !important;
+    padding: 0 28px !important;
+    font-size: 1.05rem !important;
+    letter-spacing: 0.01em;
+}
+.field-shell input::placeholder {
+    font-size: 1.0rem;
+    opacity: 0.65;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SUGGESTION LIST — LARGER, AIRIER
+   ══════════════════════════════════════════════════════════════ */
+.suggestion-list {
+    max-height: 480px !important;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,0.15) transparent;
+}
+.suggestion-list button {
+    padding: 1.0rem 1.2rem !important;
+    border-radius: 16px !important;
+    gap: 4px !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+}
+.sugg-primary {
+    font-size: 1.0rem !important;
+    font-weight: 600;
+    line-height: 1.3;
+}
+.sugg-meta {
+    font-size: 0.82rem !important;
+    opacity: 0.65;
+    line-height: 1.2;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   SMOOTH CARD TRANSITIONS — remove jank
+   ══════════════════════════════════════════════════════════════ */
+.detail-card,
+.hourly-card,
+.forecast-card,
+.watchlist-card {
+    will-change: transform, opacity;
+    transform: translateZ(0);
+}
+
+/* Smooth scroll everywhere */
+html {
+    scroll-behavior: smooth;
+}
+* {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+/* ============================================================
+   ATMOSFERA — VISUAL UPGRADE v2
+   Inspired by: contextual backgrounds, 3D illustrations,
+   color-coded detail cards, weather-reactive scenes
+   ============================================================ */
+
+/* ============================================================
+   WEATHER ILLUSTRATION — HERO SCENE ART
+   Renders inline SVG landscape inside the hero panel
+   ============================================================ */
+.weather-illustration {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    pointer-events: none;
+    border-radius: var(--radius-xl);
+    opacity: 0;
+    transition: opacity 1200ms var(--ease-smooth);
+}
+
+.weather-illustration.is-ready {
+    opacity: 1;
+}
+
+.weather-illustration svg {
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    width: 62%;
+    height: 100%;
+    transform: translateX(8%);
+    transition: transform 1400ms var(--ease-spring);
+}
+
+/* Hero must be position:relative + isolation */
+.panel-hero {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+}
+
+.panel-hero > * {
+    position: relative;
+    z-index: 1;
+}
+
+/* Gradient overlay on illustration so text stays readable */
+.panel-hero::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background: linear-gradient(
+        90deg,
+        var(--glass-strong) 0%,
+        var(--glass-strong) 38%,
+        rgba(4, 9, 18, 0.38) 62%,
+        transparent 100%
+    );
+    pointer-events: none;
+}
+
+/* ============================================================
+   3D CARD DEPTH — Perspective tilt + layered shadows
+   ============================================================ */
+.detail-card,
+.forecast-card,
+.hourly-card,
+.watchlist-card {
+    transform-style: preserve-3d;
+    perspective: 800px;
+    transition:
+        transform 280ms var(--ease-spring),
+        border-color 280ms var(--ease-smooth),
+        box-shadow 280ms var(--ease-smooth);
+}
+
+.detail-card:hover,
+.hourly-card:hover {
+    transform: translateY(-6px) rotateX(2deg) scale(1.015);
+    box-shadow:
+        0 32px 64px rgba(0,0,0,0.32),
+        0 0 0 1px rgba(255,255,255,0.14),
+        0 0 40px -8px color-mix(in srgb, var(--card-accent, var(--accent)) 40%, transparent);
+}
+
+.watchlist-card:hover {
+    transform: translateY(-5px) scale(1.02);
+}
+
+/* ============================================================
+   COLOR-CODED DETAIL CARDS
+   Each metric gets a distinct accent color
+   ============================================================ */
+.detail-card[data-metric="feels-like"]   { --card-accent: #ff9966; }
+.detail-card[data-metric="humidity"]     { --card-accent: #66d4ff; }
+.detail-card[data-metric="wind"]         { --card-accent: #a8ffcc; }
+.detail-card[data-metric="uv"]           { --card-accent: #ffe066; }
+.detail-card[data-metric="cloud"]        { --card-accent: #c4d8ff; }
+.detail-card[data-metric="visibility"]   { --card-accent: #d4aaff; }
+.detail-card[data-metric="pressure"]     { --card-accent: #ff8fa3; }
+.detail-card[data-metric="precip"]       { --card-accent: #7be7df; }
+
+.detail-card[data-metric] {
+    border-top: 2px solid color-mix(in srgb, var(--card-accent) 55%, transparent);
+    background:
+        linear-gradient(160deg, color-mix(in srgb, var(--card-accent) 8%, transparent) 0%, transparent 40%),
+        rgba(4, 8, 18, 0.22);
+}
+
+.detail-card[data-metric] strong {
+    color: var(--card-accent, var(--accent));
+    font-size: 1.6rem;
+    text-shadow: 0 0 24px color-mix(in srgb, var(--card-accent, var(--accent)) 40%, transparent);
+}
+
+/* Large emoji icon per card */
+.detail-card-icon {
+    font-size: 1.8rem;
+    display: block;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.3));
+    line-height: 1;
+}
+
+/* UV bar indicator */
+.uv-bar {
+    height: 4px;
+    border-radius: 99px;
+    background: rgba(255,255,255,0.1);
+    margin-top: 8px;
+    overflow: hidden;
+    position: relative;
+}
+
+.uv-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    background: linear-gradient(90deg, #66d4ff, #ffe066, #ff6b35, #ff1744);
+    transition: width 800ms var(--ease-spring);
+}
+
+/* ============================================================
+   CONTEXTUAL BACKGROUND INTENSITY
+   Theme-specific body gradient enhancements
+   ============================================================ */
+body[data-theme="storm"] {
+    --liquid-a: rgba(80, 100, 220, 0.5);
+    --liquid-b: rgba(60, 80, 160, 0.45);
+}
+body[data-theme="storm"]::before {
+    background:
+        linear-gradient(180deg, rgba(4, 9, 18, 0.14), rgba(4, 9, 18, 0.62)),
+        radial-gradient(circle at 50% 0%, rgba(80,100,200,0.14), transparent 34%);
+}
+
+body[data-theme="rain-day"],
+body[data-theme="rain-night"] {
+    --liquid-a: rgba(60, 180, 255, 0.38);
+    --liquid-b: rgba(80, 200, 220, 0.32);
+}
+
+body[data-theme="clear-day"] {
+    --liquid-a: rgba(255, 200, 80, 0.26);
+    --liquid-b: rgba(255, 140, 60, 0.22);
+}
+
+body[data-theme="snow"] {
+    --liquid-a: rgba(200, 230, 255, 0.28);
+    --liquid-b: rgba(180, 220, 255, 0.22);
+}
+
+body[data-theme="mist"] {
+    --liquid-a: rgba(200, 210, 220, 0.18);
+    --liquid-b: rgba(180, 195, 210, 0.18);
+}
+
+/* ============================================================
+   HERO — ENHANCED TEMPERATURE DISPLAY
+   ============================================================ */
+.hero-temp-wrapper {
+    display: flex;
+    align-items: flex-start;
+    gap: 0;
+}
+
+.hero-temp-unit {
+    font-family: var(--font-display);
+    font-size: clamp(1.6rem, 3.5vw, 2.6rem);
+    font-weight: 300;
+    line-height: 1.2;
+    margin-top: 0.6rem;
+    opacity: 0.7;
+    background: linear-gradient(160deg, var(--accent) 0%, var(--text) 60%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ============================================================
+   FORECAST CARDS — ENHANCED WITH CONDITION ICONS
+   ============================================================ */
+.forecast-card {
+    display: grid;
+    gap: 10px;
+}
+
+.forecast-condition-icon {
+    font-size: 2.2rem;
+    display: block;
+    margin: 4px 0 2px;
+    filter: drop-shadow(0 3px 10px rgba(0,0,0,0.28));
+    line-height: 1;
+}
+
+.forecast-temp-range {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+}
+
+.forecast-temp-high {
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.04em;
+}
+
+.forecast-temp-low {
+    font-size: 1.0rem;
+    color: var(--subtle);
+    letter-spacing: -0.02em;
+}
+
+.forecast-rain-bar {
+    height: 3px;
+    border-radius: 99px;
+    background: rgba(255,255,255,0.08);
+    overflow: hidden;
+    margin-top: 4px;
+}
+.forecast-rain-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #66d4ff, #3fa8e8);
+    border-radius: 99px;
+    transition: width 700ms var(--ease-spring);
+}
+
+/* ============================================================
+   HOURLY CARDS — MINI CONDITION ICONS
+   ============================================================ */
+.hourly-card {
+    align-content: start;
+}
+.hourly-icon {
+    font-size: 1.6rem;
+    line-height: 1;
+    filter: drop-shadow(0 2px 6px rgba(0,0,0,0.28));
+}
+
+/* ============================================================
+   WATCHLIST CARDS — CITY SNAPSHOT UPGRADE
+   ============================================================ */
+.watchlist-card {
+    display: grid;
+    gap: 8px;
+    min-height: 150px;
+    align-content: start;
+}
+
+.watchlist-temp-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+    margin: 4px 0;
+}
+
+.watchlist-temp {
+    font-family: var(--font-display);
+    font-size: 2.4rem;
+    font-weight: 300;
+    line-height: 0.9;
+    letter-spacing: -0.06em;
+    color: var(--accent);
+    filter: drop-shadow(0 4px 16px color-mix(in srgb, var(--accent) 30%, transparent));
+}
+
+.watchlist-icon {
+    font-size: 1.8rem;
+    margin-left: auto;
+    filter: drop-shadow(0 3px 8px rgba(0,0,0,0.3));
+}
+
+/* ============================================================
+   WEATHER CONDITION BADGE in hero
+   ============================================================ */
+.condition-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 12%, rgba(255,255,255,0.06));
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text);
+    backdrop-filter: blur(12px);
+    width: fit-content;
+}
+
+.condition-badge-icon {
+    font-size: 1.2rem;
+    line-height: 1;
+}
+
+/* ============================================================
+   ANIMATED WEATHER PARTICLES OVERLAY
+   Subtle rain / snow / shimmer on the hero depending on theme
+   ============================================================ */
+.hero-particles {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+    border-radius: var(--radius-xl);
+    opacity: 0.45;
+}
+
+.rain-particle {
+    position: absolute;
+    top: -10%;
+    width: 1.5px;
+    height: 18px;
+    background: linear-gradient(180deg, transparent, rgba(150, 220, 255, 0.7));
+    border-radius: 99px;
+    animation: rainFall linear infinite;
+}
+
+@keyframes rainFall {
+    from { transform: translateY(0) translateX(0); opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 0.6; }
+    to   { transform: translateY(120vh) translateX(-30px); opacity: 0; }
+}
+
+.snow-particle {
+    position: absolute;
+    top: -5%;
+    width: 5px;
+    height: 5px;
+    background: rgba(240, 250, 255, 0.8);
+    border-radius: 50%;
+    animation: snowFall linear infinite;
+    box-shadow: 0 0 4px rgba(255,255,255,0.5);
+}
+
+@keyframes snowFall {
+    from { transform: translateY(0) translateX(0) rotate(0deg); opacity: 0; }
+    10%  { opacity: 0.9; }
+    90%  { opacity: 0.5; }
+    to   { transform: translateY(120vh) translateX(40px) rotate(360deg); opacity: 0; }
+}
+
+.lightning-flash {
+    position: absolute;
+    inset: 0;
+    background: rgba(180, 210, 255, 0.08);
+    animation: lightningPulse 4s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes lightningPulse {
+    0%, 92%, 100% { opacity: 0; }
+    94% { opacity: 1; }
+    96% { opacity: 0; }
+    98% { opacity: 0.6; }
+}
+
+/* ============================================================
+   HERO SIDE — ENHANCED LOCAL TIME CARD
+   ============================================================ */
+.mini-panel.emphasis {
+    background:
+        linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 50%),
+        rgba(4, 10, 20, 0.32);
+    border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+    box-shadow:
+        0 0 0 1px color-mix(in srgb, var(--accent) 15%, transparent),
+        0 16px 40px rgba(0,0,0,0.2);
+}
+
+.mini-panel strong {
+    font-size: 1.5rem;
+    letter-spacing: -0.05em;
+    background: linear-gradient(135deg, var(--accent), var(--text));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+/* ============================================================
+   SECTION HEADING — ACCENT UNDERLINE
+   ============================================================ */
+.section-heading h2::after,
+.panel-heading h2::after {
+    content: "";
+    display: block;
+    width: 2.5rem;
+    height: 2px;
+    border-radius: 99px;
+    background: var(--accent);
+    margin-top: 6px;
+    opacity: 0.6;
+}
+
+/* ============================================================
+   HERO DESCRIPTION — PILL STATS
+   New layout: individual stat pills instead of long sentence
+   ============================================================ */
+.hero-stat-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.hero-stat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 0.38rem 0.76rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.11);
+    font-size: 0.82rem;
+    color: var(--muted);
+    white-space: nowrap;
+    backdrop-filter: blur(8px);
+}
+
+.hero-stat-pill-icon {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+/* ============================================================
+   TRANSITION — WEATHER UPDATE FLASH
+   Brief accent flash when new weather loads
+   ============================================================ */
+@keyframes weatherUpdate {
+    0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent), var(--shadow-lg); }
+    50%  { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 12%, transparent), var(--shadow-lg); }
+    100% { box-shadow: 0 0 0 0 transparent, var(--shadow-lg); }
+}
+
+body[data-state="success"] .panel-hero {
+    animation: weatherUpdate 900ms var(--ease-smooth) forwards;
+}
+
+/* ============================================================
+   RESPONSIVE FIXES
+   ============================================================ */
+@media (max-width: 760px) {
+    .weather-illustration svg {
+        width: 90%;
+        opacity: 0.35;
+    }
+
+    .detail-card[data-metric] strong {
+        font-size: 1.4rem;
+    }
+
+    .hero-stat-pills {
+        gap: 6px;
+    }
+}
+
+@media (max-width: 560px) {
+    .weather-illustration svg {
+        display: none;
+    }
+
+    .hero-stat-pills {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* ============================================================
+   HERO LAYOUT FIX — Data LEFT, Illustration RIGHT
+   ============================================================ */
+
+/* Ensure hero-copy (data) stays on the left */
+.panel-hero {
+    grid-template-columns: 1fr 0.75fr !important;
+}
+
+/* Override illustration to fill RIGHT side properly */
+.weather-illustration {
+    position: absolute !important;
+    top: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    left: auto !important;
+    width: 55% !important;
+    border-radius: 0 var(--radius-xl) var(--radius-xl) 0 !important;
+    pointer-events: none;
+}
+
+.weather-illustration svg {
+    width: 100% !important;
+    height: 100% !important;
+    transform: none !important;
+    position: absolute;
+    inset: 0;
+}
+
+/* Gradient: strong on LEFT (behind text), fade to transparent on RIGHT */
+.panel-hero::before {
+    background: linear-gradient(
+        90deg,
+        var(--glass-strong) 0%,
+        var(--glass-strong) 30%,
+        rgba(4, 9, 18, 0.55) 52%,
+        rgba(4, 9, 18, 0.1) 75%,
+        transparent 100%
+    ) !important;
+}
+
+/* Hero copy — ensure it stays above the illustration */
+.hero-copy {
+    position: relative;
+    z-index: 2;
+}
+
+.hero-side {
+    position: relative;
+    z-index: 2;
+}
+
+/* Make the illustration taller / more immersive */
+.panel-hero {
+    min-height: 520px;
+}
+
+/* Push particles behind content */
+.hero-particles {
+    z-index: 0 !important;
+}
+
+/* ============================================================
+   RESPONSIVE — stack on mobile, illustration fades behind
+   ============================================================ */
+@media (max-width: 1100px) {
+    .panel-hero {
+        grid-template-columns: 1fr !important;
+        min-height: 480px;
+    }
+
+    .weather-illustration {
+        width: 100% !important;
+        opacity: 0.35 !important;
+        left: 0 !important;
+        border-radius: var(--radius-xl) !important;
+    }
+
+    .panel-hero::before {
+        background: linear-gradient(
+            180deg,
+            rgba(4, 9, 18, 0.3) 0%,
+            rgba(4, 9, 18, 0.75) 60%,
+            var(--glass-strong) 100%
+        ) !important;
+    }
+}

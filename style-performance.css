@@ -1,0 +1,218 @@
+/* ============================================================
+   ATMOSFERA — PERFORMANCE OVERRIDES
+   Goal: Stable 60fps by eliminating GPU-expensive operations
+   ============================================================ */
+
+/* ── 1. KILL backdrop-filter on cards (biggest FPS killer) ── */
+/* Cards don't need blur — they sit on a already-blurred panel */
+.detail-card,
+.hourly-card,
+.forecast-card,
+.watchlist-card,
+.empty-card,
+.quick-pill,
+.hero-stat-pill,
+.mini-panel,
+.eyebrow,
+.context-chip,
+.condition-badge,
+.ghost-button,
+.secondary-button,
+.motion-chip,
+.sound-chip,
+.inline-link {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+
+/* ── 2. REDUCE panel blur — 24px → 12px (50% cheaper) ──────── */
+.panel,
+.section,
+.context-grid > .panel,
+.status-banner {
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+}
+
+/* Keep only the top-level panels blurred */
+.topbar,
+.panel-hero,
+.suggestion-list {
+    backdrop-filter: blur(14px) !important;
+    -webkit-backdrop-filter: blur(14px) !important;
+}
+
+/* ── 3. KILL CSS blob animations — they repaint every frame ── */
+.scene-blob-a,
+.scene-blob-b,
+.scene-blob-c {
+    animation: none !important;
+    will-change: auto !important;
+    transform: none !important;
+}
+
+/* ── 4. REDUCE gradient blob blur — 40px → 0 (static, no filter) */
+.scene-blob {
+    filter: none !important;
+    opacity: 0.3 !important;
+}
+
+/* ── 5. SLOW DOWN gradient animations — 2x slower, less repaints */
+.scene-gradient-a { animation-duration: 44s !important; }
+.scene-gradient-b { animation-duration: 56s !important; }
+.scene-gradient-c { animation-duration: 36s !important; }
+
+/* ── 6. REDUCE gradient blur cost ──────────────────────────── */
+.scene-gradient {
+    filter: blur(60px) !important; /* was 80px */
+    will-change: auto !important;   /* don't pre-composite unless animating */
+}
+
+/* Restore will-change only when actually animating */
+.scene-gradient-a,
+.scene-gradient-b,
+.scene-gradient-c {
+    will-change: transform !important;
+}
+
+/* ── 7. KILL mix-blend-mode on canvas — forces separate layer ── */
+#sceneCanvas {
+    mix-blend-mode: normal !important;
+    opacity: 0.85 !important;
+}
+
+/* ── 8. DISABLE scene noise (SVG filter — CPU expensive) ────── */
+.scene-noise {
+    display: none !important;
+}
+
+/* ── 9. CONTAIN layout — stop reflows from propagating ──────── */
+.detail-grid,
+.hourly-rail,
+.forecast-grid,
+.watchlist-grid,
+.facts-list {
+    contain: layout style !important;
+}
+
+.detail-card,
+.hourly-card,
+.forecast-card,
+.watchlist-card {
+    contain: layout style paint !important;
+}
+
+/* ── 10. SIMPLIFY body background — remove radial gradient layers */
+body {
+    background:
+        radial-gradient(ellipse at 15% 12%, var(--liquid-a), transparent 38%),
+        radial-gradient(ellipse at 85% 10%, var(--liquid-b), transparent 32%),
+        linear-gradient(155deg, var(--scene-start) 0%, var(--scene-mid) 48%, var(--scene-end) 100%) !important;
+    background-attachment: fixed !important;
+}
+
+/* Remove the body::before and ::after pseudo-element repaints */
+body::before,
+body::after {
+    display: none !important;
+}
+
+/* ── 11. GPU-promote the right layers ────────────────────────── */
+.scene-shell {
+    will-change: auto !important;
+    transform: translateZ(0);
+    contain: strict !important;
+}
+
+#sceneCanvas {
+    will-change: contents !important;
+    transform: translateZ(0);
+    contain: strict !important;
+}
+
+/* ── 12. THROTTLE card transitions ─────────────────────────── */
+/* Shorten transition durations — long transitions hold GPU layers open */
+.detail-card,
+.hourly-card,
+.forecast-card,
+.watchlist-card {
+    transition:
+        transform 200ms var(--ease-spring),
+        border-color 200ms var(--ease-smooth),
+        box-shadow 200ms var(--ease-smooth) !important;
+    will-change: auto !important; /* don't pre-promote — only on hover */
+}
+
+.detail-card:hover,
+.hourly-card:hover,
+.forecast-card:hover,
+.watchlist-card:hover {
+    will-change: transform !important;
+}
+
+/* ── 13. REMOVE 3D perspective on cards — forces stacking context */
+.detail-card,
+.forecast-card,
+.hourly-card,
+.watchlist-card {
+    transform-style: flat !important;
+    perspective: none !important;
+}
+
+/* Replace 3D hover with flat translateY — much cheaper */
+.detail-card:hover,
+.hourly-card:hover {
+    transform: translateY(-5px) !important;
+}
+
+/* ── 14. KILL rain/snow CSS particles (canvas handles these) ─── */
+.hero-particles {
+    display: none !important;
+}
+
+/* ── 15. REDUCE illustration opacity on low-end hint ─────────── */
+.weather-illustration {
+    will-change: auto !important;
+}
+
+.weather-illustration svg {
+    shape-rendering: optimizeSpeed !important;
+}
+
+/* ── 16. SHIMMER animation — use transform instead of background-position */
+.skeleton-card,
+.facts-skeleton {
+    animation: shimmer 2s linear infinite !important; /* slower = less repaints */
+}
+
+/* ── 17. HARDWARE ACCELERATION only where it matters ─────────── */
+.hero-temperature,
+.hero-title,
+.panel-hero {
+    transform: translateZ(0);
+}
+
+/* ── MOBILE — extra aggressive ──────────────────────────────── */
+@media (max-width: 760px) {
+    .panel,
+    .section,
+    .topbar,
+    .panel-hero {
+        backdrop-filter: blur(8px) !important;
+        -webkit-backdrop-filter: blur(8px) !important;
+    }
+
+    .scene-gradient {
+        filter: blur(40px) !important;
+        animation-duration: 60s !important;
+    }
+
+    .scene-gradient-c {
+        display: none !important; /* drop 3rd gradient on mobile */
+    }
+
+    .scene-blob-a,
+    .scene-blob-c {
+        display: none !important; /* keep only 1 blob on mobile */
+    }
+}
