@@ -16,7 +16,7 @@ const DIST_INDEX = path.join(DIST_DIR, "index.html");
 
 const app     = express();
 const PORT    = Number(process.env.PORT || 3000);
-const API_KEY = process.env.WEATHERAPI_KEY;
+const API_KEY = process.env.OPENWEATHER_KEY;   // ← switched from WEATHERAPI_KEY
 
 const WEATHER_CACHE_TTL_MS = 5 * 60 * 1000;
 const CITY_CACHE_TTL_MS    = 6 * 60 * 60 * 1000; // 6h — city names don't change
@@ -24,7 +24,7 @@ const weatherCache = new Map();
 const cityCache    = new Map();
 
 // ─────────────────────────────────────────────────────────────────────────────
-// KNOWN INDIAN CITIES — direct coordinate lookup bypasses WeatherAPI search
+// KNOWN INDIAN CITIES — direct coordinate lookup bypasses OWM search
 // ambiguity entirely. Format: lowercase alias → "lat,lon" query string.
 // ─────────────────────────────────────────────────────────────────────────────
 const INDIA_CITY_COORDS = {
@@ -34,8 +34,8 @@ const INDIA_CITY_COORDS = {
     "bombay":         "19.0760,72.8777",
     "kolkata":        "22.5726,88.3639",
     "calcutta":       "22.5726,88.3639",
-    "salt lake":      "22.5797,88.4280",  // Salt Lake City, Kolkata
-    "salt lake city": "22.5797,88.4280",  // force Kolkata sector V
+    "salt lake":      "22.5797,88.4280",
+    "salt lake city": "22.5797,88.4280",
     "sector v":       "22.5766,88.4344",
     "bidhannagar":    "22.5797,88.4280",
     "durgapur":       "23.5204,87.3119",
@@ -156,7 +156,7 @@ app.set("trust proxy", true); // Trust X-Forwarded-For from Render/reverse proxi
 // ── WEATHER API ───────────────────────────────────────────────────────────────
 
 app.get("/api/weather", async (req, res) => {
-    if (!API_KEY) return res.status(500).json({ error: "Missing WEATHERAPI_KEY in .env" });
+    if (!API_KEY) return res.status(500).json({ error: "Missing OPENWEATHER_KEY in .env" });
 
     const city = typeof req.query.city === "string" ? req.query.city.trim() : "";
     const lat  = typeof req.query.lat  === "string" ? req.query.lat.trim()  : "";
@@ -168,7 +168,6 @@ app.get("/api/weather", async (req, res) => {
     }
 
     // If city matches a known Indian city, use coordinates directly
-    // This completely bypasses WeatherAPI's ambiguous city name resolution
     let query = city || `${lat},${lon}`;
     if (city) {
         const coordOverride = INDIA_CITY_COORDS[city.toLowerCase().trim()];
@@ -176,7 +175,6 @@ app.get("/api/weather", async (req, res) => {
     }
 
     const queryType = (lat && lon && !city) ? "coordinates" : "city";
-    // Never cache auto:ip — result is per-user based on their IP
     const isAutoIp  = city.toLowerCase() === "auto:ip";
     const cacheKey  = `${query}:${days}`;
     const cached    = !isAutoIp && getCached(weatherCache, cacheKey, WEATHER_CACHE_TTL_MS);
@@ -195,7 +193,7 @@ app.get("/api/weather", async (req, res) => {
 // ── CITY SEARCH API ───────────────────────────────────────────────────────────
 
 app.get("/api/cities", async (req, res) => {
-    if (!API_KEY) return res.status(500).json({ error: "Missing WEATHERAPI_KEY in .env" });
+    if (!API_KEY) return res.status(500).json({ error: "Missing OPENWEATHER_KEY in .env" });
 
     const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
     if (query.length < 2) return res.json([]);
@@ -205,38 +203,30 @@ app.get("/api/cities", async (req, res) => {
     if (cached) return res.json(cached);
 
     try {
-        // Strategy: run TWO searches in parallel
-        // 1. Plain query → global results
-        // 2. "query, India" → forces Indian matches
-        // Then merge: Indian results always first, dedup by name+region+country
+        // Run global search + India-biased search in parallel
         const [globalResults, indiaResults] = await Promise.allSettled([
             fetchCitySearch(query),
             fetchCitySearch(`${query}, India`)
         ]);
 
-        const seen    = new Set();
-        const indian  = [];
-        const others  = [];
+        const seen   = new Set();
+        const indian = [];
+        const others = [];
 
-        const addResult = (item, preferIndia) => {
+        const addResult = (item) => {
             const key = `${item.name}|${item.region}|${item.country}`.toLowerCase();
             if (seen.has(key)) return;
             seen.add(key);
-            const cc = getCountryCode(item.country || "");
-            if (cc === "IN") {
+            if (item.country === "IN") {
                 indian.push(item);
             } else {
                 others.push(item);
             }
         };
 
-        // India results go first
-        if (indiaResults.status === "fulfilled") {
-            indiaResults.value.forEach(r => addResult(r, true));
-        }
-        if (globalResults.status === "fulfilled") {
-            globalResults.value.forEach(r => addResult(r, false));
-        }
+        // India results first
+        if (indiaResults.status === "fulfilled") indiaResults.value.forEach(r => addResult(r));
+        if (globalResults.status === "fulfilled") globalResults.value.forEach(r => addResult(r));
 
         // Also add local coordinate-based matches for known Indian cities
         const qLower = query.toLowerCase();
@@ -249,7 +239,7 @@ app.get("/api/cities", async (req, res) => {
                     _coordMatch: true,
                     name: name.split(" ").map(w => w[0].toUpperCase() + w.slice(1)).join(" "),
                     region: "India",
-                    country: "India",
+                    country: "IN",
                     lat: clat,
                     lon: clon,
                     url: "",
@@ -267,12 +257,9 @@ app.get("/api/cities", async (req, res) => {
 });
 
 // ── LOCATE: nearest city from GPS coords ─────────────────────────────────────
-// Finds the nearest city in our hardcoded Indian list via haversine distance,
-// then falls back to WeatherAPI reverse geocoding using raw coordinates.
-// This completely bypasses WeatherAPI's broken locality name resolution.
 
 app.get("/api/locate", async (req, res) => {
-    if (!API_KEY) return res.status(500).json({ error: "Missing WEATHERAPI_KEY in .env" });
+    if (!API_KEY) return res.status(500).json({ error: "Missing OPENWEATHER_KEY in .env" });
 
     const lat = parseFloat(req.query.lat);
     const lon = parseFloat(req.query.lon);
@@ -294,15 +281,14 @@ app.get("/api/locate", async (req, res) => {
         }
     }
 
-    // Step 2: If nearest known city is within 60km, use its exact coordinates
-    // This gives a clean city name instead of a random locality
+    // Step 2: If nearest known city is within 80km, use its exact coordinates
     if (nearest && nearest.dist <= 80) {
         const displayName = nearest.name
             .split(" ")
             .map(w => w[0].toUpperCase() + w.slice(1))
             .join(" ");
         return res.json({
-            resolvedCity: nearest.name,        // used as query to /api/weather
+            resolvedCity: nearest.name,
             displayName,
             lat: nearest.lat,
             lon: nearest.lon,
@@ -311,10 +297,9 @@ app.get("/api/locate", async (req, res) => {
         });
     }
 
-    // Step 3: Outside our known list — use raw coords directly with WeatherAPI
-    // Raw coords always work correctly; only name resolution is broken
+    // Step 3: Outside our known list — use raw coords directly
     return res.json({
-        resolvedCity: null,   // client will use lat,lon directly
+        resolvedCity: null,
         displayName: null,
         lat,
         lon,
@@ -333,11 +318,8 @@ function haversineKm(lat1, lon1, lat2, lon2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-
 // ── IP-BASED LOCATION (server-side) ──────────────────────────────────────────
-// Called when GPS is unavailable or has terrible accuracy (PC/laptop).
-// Reads the real client IP from headers, queries ip-api.com server-side
-// (HTTP is fine in Node.js — not blocked like it is in browser HTTPS pages).
+
 app.get("/api/ip-locate", async (req, res) => {
     const clientIp =
         (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
@@ -373,7 +355,6 @@ app.get("/api/ip-locate", async (req, res) => {
             });
         }
 
-        // Outside known list — return raw IP coords + city from ip-api
         return res.json({
             resolvedCity: null,
             displayName: [city, regionName, country].filter(Boolean).join(", "),
@@ -415,7 +396,7 @@ app.get("*", (req, res) => {
 
 app.listen(PORT, () => {
     console.log(`\n  Atmosfera  →  http://localhost:${PORT}\n`);
-    if (!API_KEY) console.warn("  ⚠  WEATHERAPI_KEY missing in .env\n");
+    if (!API_KEY) console.warn("  ⚠  OPENWEATHER_KEY missing in .env\n");
 });
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -432,108 +413,224 @@ function clampDays(value) {
     return Number.isNaN(n) ? 5 : Math.max(1, Math.min(n, 5));
 }
 
+// ── FETCH FUNCTIONS (OpenWeatherMap) ─────────────────────────────────────────
+
 async function fetchForecast(query, days) {
-    const d   = Math.max(1, Math.min(days, 5));
-    const url = `https://api.weatherapi.com/v1/forecast.json?key=${API_KEY}&q=${encodeURIComponent(query)}&days=${d}&aqi=no&alerts=no`;
-    const data = await fetchJson(url);
-    if (data?.error) {
-        const msg = data.error.message || "Weather provider failed.";
-        if (d > 3 && /day/i.test(msg)) return fetchForecast(query, 3);
-        const err = new Error(msg); err.statusCode = 502; throw err;
+    // Resolve query to lat/lon — either already "lat,lon" or a city name
+    let lat, lon, resolvedName;
+
+    if (/^-?\d+(\.\d+)?,-?\d+(\.\d+)?$/.test(query)) {
+        // Already coordinates
+        [lat, lon] = query.split(",").map(Number);
+    } else {
+        // City name → geocode via OWM
+        const geoUrl = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=1&appid=${API_KEY}`;
+        const geoData = await fetchJson(geoUrl);
+        if (!Array.isArray(geoData) || geoData.length === 0) {
+            const err = new Error(`City not found: ${query}`);
+            err.statusCode = 404;
+            throw err;
+        }
+        lat          = geoData[0].lat;
+        lon          = geoData[0].lon;
+        resolvedName = geoData[0].name;
     }
-    return data;
+
+    // Fetch current weather + 5-day forecast (3-hour steps, 40 entries = ~5 days) in parallel
+    const currentUrl  = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric`;
+    const forecastUrl = `https://api.openweathermap.org/data/2.5/forecast?lat=${lat}&lon=${lon}&appid=${API_KEY}&units=metric&cnt=40`;
+
+    const [currentData, forecastData] = await Promise.all([
+        fetchJson(currentUrl),
+        fetchJson(forecastUrl)
+    ]);
+
+    return { currentData, forecastData, lat, lon, resolvedName };
 }
 
 async function fetchCitySearch(query) {
-    const url  = `https://api.weatherapi.com/v1/search.json?key=${API_KEY}&q=${encodeURIComponent(query)}`;
+    // OWM Geocoding API — returns up to 5 matches
+    const url  = `https://api.openweathermap.org/geo/1.0/direct?q=${encodeURIComponent(query)}&limit=5&appid=${API_KEY}`;
     const data = await fetchJson(url);
     if (!Array.isArray(data)) {
-        const err = new Error(data?.error?.message || "City search failed.");
-        err.statusCode = 502; throw err;
+        const err = new Error("City search failed.");
+        err.statusCode = 502;
+        throw err;
     }
-    return data;
+    // Normalize to the same shape the rest of the code expects
+    return data.map(e => ({
+        id:      `${e.name}-${e.state || ""}-${e.country}`.toLowerCase().replace(/\s+/g, "-"),
+        name:    e.name    || "",
+        region:  e.state   || "",
+        country: e.country || "",
+        lat:     e.lat,
+        lon:     e.lon,
+        url:     ""
+    }));
 }
 
 async function fetchJson(url) {
     const response = await fetch(url);
     const data     = await response.json().catch(() => null);
     if (!response.ok) {
-        const err = new Error(data?.error?.message || "External API failed.");
-        err.statusCode = response.status || 502; throw err;
+        const msg = data?.message || data?.error?.message || "External API failed.";
+        const err = new Error(msg);
+        err.statusCode = response.status || 502;
+        throw err;
     }
     return data;
 }
 
-function normalizeWeather(data, meta) {
-    const loc   = data.location || {};
-    const cur   = data.current  || {};
-    const fdays = data.forecast?.forecastday || [];
-    const today = fdays[0] || {};
-    const nowEpoch = cur.last_updated_epoch || loc.localtime_epoch || 0;
+// ── NORMALIZE: OWM → Atmosfera shape ─────────────────────────────────────────
 
-    const hourly = fdays
-        .flatMap((d) => d.hour || [])
-        .filter((h) => h.time_epoch >= nowEpoch - 3600)
-        .slice(0, 24)
-        .map((h) => ({
-            time: h.time, epoch: h.time_epoch,
-            tempC: h.temp_c, tempF: h.temp_f,
-            conditionText: h.condition?.text || "Unknown",
-            iconUrl: withHttps(h.condition?.icon),
-            isDay: Boolean(h.is_day),
-            chanceOfRain: Number(h.chance_of_rain || 0),
-            chanceOfSnow: Number(h.chance_of_snow || 0),
-            windKph: h.wind_kph, humidity: h.humidity, cloud: h.cloud
-        }));
+function normalizeWeather(data, meta) {
+    const { currentData: cur, forecastData: fc, lat, lon, resolvedName } = data;
+
+    const nowEpoch      = cur.dt || Math.floor(Date.now() / 1000);
+    const timezoneShift = cur.timezone || 0; // seconds offset from UTC
+
+    // Local time epoch: UTC now + timezone offset
+    const localTimeEpoch = Math.floor(Date.now() / 1000) + timezoneShift;
+
+    // ── Build forecast days from 3-hour slots ──────────────────────────────
+    // Group OWM 3-hour slots by local date
+    const dayMap = new Map();
+    for (const item of (fc.list || [])) {
+        const localEpoch = item.dt + timezoneShift;
+        const d = new Date(localEpoch * 1000);
+        const dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;
+        if (!dayMap.has(dateStr)) dayMap.set(dateStr, []);
+        dayMap.get(dateStr).push(item);
+    }
+
+    const forecastDays = [...dayMap.entries()].slice(0, 5).map(([dateStr, items]) => {
+        const temps    = items.map(i => i.main.temp);
+        const maxTempC = Math.max(...temps);
+        const minTempC = Math.min(...temps);
+        const avgTempC = temps.reduce((s, t) => s + t, 0) / temps.length;
+
+        // Pick midday slot for condition, fallback to first
+        const midday = items.find(i => {
+            const localH = new Date((i.dt + timezoneShift) * 1000).getUTCHours();
+            return localH >= 11 && localH <= 14;
+        }) || items[0];
+
+        const rainChance  = Math.round((items.reduce((s, i) => s + (i.pop || 0), 0) / items.length) * 100);
+        const maxWindKph  = Math.max(...items.map(i => (i.wind?.speed || 0) * 3.6));
+        const avgHumidity = Math.round(items.reduce((s, i) => s + (i.main.humidity || 0), 0) / items.length);
+        const totalPrecip = items.reduce((s, i) => s + (i.rain?.["3h"] || 0), 0);
+
+        return {
+            date:          dateStr,
+            dayName:       weekdayFromDate(dateStr),
+            minTempC,      minTempF: toF(minTempC),
+            maxTempC,      maxTempF: toF(maxTempC),
+            avgTempC,      avgTempF: toF(avgTempC),
+            maxWindKph,
+            humidity:      avgHumidity,
+            uv:            0,
+            chanceOfRain:  rainChance,
+            chanceOfSnow:  0,
+            totalPrecipMm: totalPrecip,
+            conditionText: capitalise(midday.weather?.[0]?.description || "Unknown"),
+            iconUrl:       owmIcon(midday.weather?.[0]?.icon, true),
+            sunrise:       "",
+            sunset:        ""
+        };
+    });
+
+    // ── Hourly — next 24 three-hour slots ─────────────────────────────────
+    const hourly = (fc.list || []).slice(0, 24).map(h => ({
+        time:          new Date(h.dt * 1000).toISOString(),
+        epoch:         h.dt,
+        tempC:         h.main.temp,
+        tempF:         toF(h.main.temp),
+        conditionText: capitalise(h.weather?.[0]?.description || "Unknown"),
+        iconUrl:       owmIcon(h.weather?.[0]?.icon, false),
+        isDay:         h.sys?.pod === "d",
+        chanceOfRain:  Math.round((h.pop || 0) * 100),
+        chanceOfSnow:  0,
+        windKph:       (h.wind?.speed || 0) * 3.6,
+        humidity:      h.main.humidity,
+        cloud:         h.clouds?.all || 0
+    }));
+
+    // ── Sunrise / sunset (formatted from epoch) ────────────────────────────
+    const sunriseEpoch = cur.sys?.sunrise || 0;
+    const sunsetEpoch  = cur.sys?.sunset  || 0;
+    const fmtSunTime   = (epoch) => {
+        if (!epoch) return "--";
+        const d = new Date((epoch + timezoneShift) * 1000);
+        const h = d.getUTCHours();
+        const m = String(d.getUTCMinutes()).padStart(2, "0");
+        const ampm = h >= 12 ? "PM" : "AM";
+        return `${h % 12 || 12}:${m} ${ampm}`;
+    };
+
+    // ── is_day derived from sun position ──────────────────────────────────
+    const isDay = nowEpoch >= sunriseEpoch && nowEpoch <= sunsetEpoch;
+
+    // ── Location name ─────────────────────────────────────────────────────
+    const cityName   = resolvedName || cur.name || "";
+    const countryCode = cur.sys?.country || "";
+    const countryName = countryCode
+        ? (new Intl.DisplayNames(["en"], { type: "region" }).of(countryCode) || countryCode)
+        : "";
 
     return {
         query: {
-            type: meta.queryType, requested: meta.query,
-            requestedDays: meta.requestedDays, returnedDays: fdays.length
+            type:          meta.queryType,
+            requested:     meta.query,
+            requestedDays: meta.requestedDays,
+            returnedDays:  forecastDays.length
         },
         location: {
-            name: loc.name || "", region: loc.region || "", country: loc.country || "",
-            displayName: [loc.name, loc.region, loc.country]
-                .filter((v, i, a) => v && a.indexOf(v) === i).join(", "),
-            timezone: loc.tz_id || "UTC", localTime: loc.localtime || "",
-            localTimeEpoch: loc.localtime_epoch || nowEpoch,
-            lat: loc.lat, lon: loc.lon
+            name:           cityName,
+            region:         countryCode,
+            country:        countryName,
+            displayName:    [cityName, countryName].filter(Boolean).join(", "),
+            timezone:       "UTC",          // OWM free tier doesn't give tz_id string
+            localTime:      new Date(localTimeEpoch * 1000).toISOString(),
+            localTimeEpoch: localTimeEpoch,
+            lat:            cur.coord?.lat ?? lat,
+            lon:            cur.coord?.lon ?? lon
         },
         current: {
-            temperatureC: cur.temp_c, temperatureF: cur.temp_f,
-            feelsLikeC: cur.feelslike_c, feelsLikeF: cur.feelslike_f,
-            humidity: cur.humidity, windKph: cur.wind_kph, windMph: cur.wind_mph,
-            windDegree: cur.wind_degree, windDirection: cur.wind_dir,
-            uv: cur.uv, cloud: cur.cloud, pressureMb: cur.pressure_mb,
-            precipMm: cur.precip_mm, visibilityKm: cur.vis_km,
-            isDay: Boolean(cur.is_day),
-            conditionText: cur.condition?.text || "Unknown",
-            conditionCode: cur.condition?.code || 0,
-            iconUrl: withHttps(cur.condition?.icon),
-            updatedAt: cur.last_updated || "", updatedAtEpoch: nowEpoch
+            temperatureC:  cur.main?.temp,
+            temperatureF:  toF(cur.main?.temp),
+            feelsLikeC:    cur.main?.feels_like,
+            feelsLikeF:    toF(cur.main?.feels_like),
+            humidity:      cur.main?.humidity,
+            windKph:       (cur.wind?.speed || 0) * 3.6,
+            windMph:       (cur.wind?.speed || 0) * 2.237,
+            windDegree:    cur.wind?.deg   || 0,
+            windDirection: degToCompass(cur.wind?.deg || 0),
+            uv:            0,               // Not available on OWM free tier
+            cloud:         cur.clouds?.all || 0,
+            pressureMb:    cur.main?.pressure,
+            precipMm:      cur.rain?.["1h"] || cur.rain?.["3h"] || 0,
+            visibilityKm:  (cur.visibility || 0) / 1000,
+            isDay,
+            conditionText: capitalise(cur.weather?.[0]?.description || "Unknown"),
+            conditionCode: cur.weather?.[0]?.id || 0,
+            iconUrl:       owmIcon(cur.weather?.[0]?.icon, true),
+            updatedAt:     new Date(nowEpoch * 1000).toISOString(),
+            updatedAtEpoch: nowEpoch
         },
         astro: {
-            sunrise: today.astro?.sunrise || "", sunset: today.astro?.sunset || "",
-            moonrise: today.astro?.moonrise || "", moonset: today.astro?.moonset || "",
-            moonPhase: today.astro?.moon_phase || "",
-            moonIllumination: today.astro?.moon_illumination || ""
+            sunrise:           fmtSunTime(sunriseEpoch),
+            sunset:            fmtSunTime(sunsetEpoch),
+            moonrise:          "--",
+            moonset:           "--",
+            moonPhase:         "--",
+            moonIllumination:  "--"
         },
-        forecastDays: fdays.map((d) => ({
-            date: d.date, dayName: weekdayFromDate(d.date),
-            minTempC: d.day?.mintemp_c, minTempF: d.day?.mintemp_f,
-            maxTempC: d.day?.maxtemp_c, maxTempF: d.day?.maxtemp_f,
-            avgTempC: d.day?.avgtemp_c, avgTempF: d.day?.avgtemp_f,
-            maxWindKph: d.day?.maxwind_kph, humidity: d.day?.avghumidity, uv: d.day?.uv,
-            chanceOfRain: Number(d.day?.daily_chance_of_rain || 0),
-            chanceOfSnow: Number(d.day?.daily_chance_of_snow || 0),
-            totalPrecipMm: d.day?.totalprecip_mm,
-            conditionText: d.day?.condition?.text || "Unknown",
-            iconUrl: withHttps(d.day?.condition?.icon),
-            sunrise: d.astro?.sunrise || "", sunset: d.astro?.sunset || ""
-        })),
+        forecastDays,
         hourly
     };
 }
+
+// ── CITY SEARCH NORMALIZE ─────────────────────────────────────────────────────
 
 function normalizeCitySearchResults(results) {
     const seen = new Set();
@@ -546,19 +643,48 @@ function normalizeCitySearchResults(results) {
         })
         .slice(0, 24)
         .map((e) => {
-            const countryCode = e._coordMatch ? "IN" : getCountryCode(e.country || "");
+            // country is already an ISO code from OWM ("IN", "US", etc.)
+            const countryCode = e._coordMatch ? "IN" : (e.country || "");
+            const countryName = countryCode
+                ? (new Intl.DisplayNames(["en"], { type: "region" }).of(countryCode) || countryCode)
+                : "";
             const displayName = e._coordMatch
-                ? `${e.name}, ${e.region}`
-                : [e.name, e.region, e.country].filter((v, i, a) => v && a.indexOf(v) === i).join(", ");
+                ? `${e.name}, India`
+                : [e.name, e.region, countryName].filter((v, i, a) => v && a.indexOf(v) === i).join(", ");
             return {
-                id: e.id || `${e.name}-${e.region}-${e.country}`.toLowerCase().replace(/\s+/g, "-"),
-                name: e.name || "", region: e.region || "", country: e.country || "",
+                id:          e.id || `${e.name}-${e.region}-${e.country}`.toLowerCase().replace(/\s+/g, "-"),
+                name:        e.name    || "",
+                region:      e.region  || "",
+                country:     countryName,
                 displayName,
-                lat: Number(e.lat), lon: Number(e.lon), url: e.url || "",
-                flag: countryCode ? countryCodeToFlag(countryCode) : "🌍",
+                lat:         Number(e.lat),
+                lon:         Number(e.lon),
+                url:         e.url || "",
+                flag:        countryCode ? countryCodeToFlag(countryCode) : "🌍",
                 countryCode
             };
         });
+}
+
+// ── SMALL UTILITIES ───────────────────────────────────────────────────────────
+
+function toF(c) {
+    return (c === null || c === undefined) ? null : c * 9 / 5 + 32;
+}
+
+function degToCompass(deg) {
+    const dirs = ["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+    return dirs[Math.round(deg / 22.5) % 16];
+}
+
+function owmIcon(iconCode, large = false) {
+    if (!iconCode) return "";
+    return `https://openweathermap.org/img/wn/${iconCode}${large ? "@2x" : ""}.png`;
+}
+
+function capitalise(str) {
+    if (!str) return str;
+    return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 function withHttps(url) { return !url ? "" : url.startsWith("http") ? url : `https:${url}`; }

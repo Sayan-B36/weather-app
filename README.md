@@ -6,7 +6,7 @@ A cinematic, weather-reactive full-stack weather app with immersive visuals, amb
 
 ## 🌐 Live Demo
 
-👉 https://atmosfera-i70k.onrender.com
+👉 https://atmosfera-xafi.onrender.com
 
 ---
 
@@ -18,6 +18,8 @@ A cinematic, weather-reactive full-stack weather app with immersive visuals, amb
 - 🔊 Procedural ambient audio that matches current weather
 - 🗺️ Embedded OpenStreetMap with precise coordinates
 - 📍 One-tap geolocation
+- 🖼️ Contextual SVG weather illustrations (landscapes per condition)
+- ⚡ Performance-optimised — 60fps canvas, throttled particles
 - ♿ Reduced-motion support and ARIA live regions
 - 🔐 API key secured on the backend — never exposed to the client
 
@@ -55,16 +57,19 @@ Browser → Express static server → /api/weather → WeatherAPI.com
 
 ```
 atmosfera/
-├── index.html          ← App shell + all DOM structure
-├── script.js           ← Entry point
-├── weather-app.js      ← Main app logic
-├── scene-controller.js ← Canvas particle engine
-├── motion-controller.js← Animations + reveal system
-├── ambient-audio.js    ← Web Audio procedural soundscape
-├── styles.css          ← All styles (glassmorphism design system)
-├── server.js           ← Express API proxy + static server
+├── index.html               ← App shell + all DOM structure
+├── script.js                ← Entry point
+├── weather-app.js           ← Main app logic
+├── scene-controller.js      ← Canvas particle engine
+├── motion-controller.js     ← Animations + reveal system
+├── ambient-audio.js         ← Web Audio procedural soundscape
+├── weather-illustrations.js ← SVG landscape scenes per weather condition
+├── style.css                ← Core styles (glassmorphism design system)
+├── style-enhancements.css   ← Visual upgrades (illustrations, 3D cards, pills)
+├── style-performance.css    ← Performance overrides (60fps optimisations)
+├── server.js                ← Express API proxy + static server
 ├── package.json
-└── .env                ← WEATHERAPI_KEY=your_key_here
+└── .env                     ← WEATHERAPI_KEY=your_key_here
 ```
 
 ---
@@ -93,6 +98,8 @@ npm run dev
 3. Set **Start command**: `npm start`
 4. Add environment variable: `WEATHERAPI_KEY = your_key`
 5. Deploy
+
+> **Note:** Render free tier spins down after inactivity. First load may take 30–60 seconds to cold-start.
 
 ---
 
