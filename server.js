@@ -484,9 +484,20 @@ app.get("*", (req, res) => {
     res.status(200).send("Run `npm install` then `npm start`.");
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`\n  Atmosfera  →  http://localhost:${PORT}\n`);
     if (!API_KEY) console.warn("  ⚠  OPENWEATHER_KEY missing in .env\n");
+});
+
+server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`\n  ✗ Port ${PORT} is already in use.\n`);
+        console.log(`  Quick fixes:\n`);
+        console.log(`  1. Kill the process: npx fkill :${PORT}\n`);
+        console.log(`  2. Use different port: PORT=3001 npm start\n`);
+        process.exit(1);
+    }
+    throw err;
 });
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
