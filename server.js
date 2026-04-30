@@ -259,6 +259,10 @@ const CURATED_CITY_INDEX = buildCuratedCityIndex();
 app.disable("x-powered-by");
 app.set("trust proxy", true); // Trust X-Forwarded-For from Render/reverse proxies
 
+app.get('/api/health', (req, res) => {
+    res.status(200).send('OK');
+});
+
 // ── WEATHER API ───────────────────────────────────────────────────────────────
 
 app.get("/api/weather", async (req, res) => {
